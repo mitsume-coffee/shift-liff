@@ -154,6 +154,8 @@
       state.days[d.date] = d.saved ? { type: d.saved.type, start: d.saved.start, end: d.saved.end } : null;
       box.appendChild(dayElement(d));
     });
+    // 追加した要素がDOMに入ったあとで、保存済みの状態を再描画する
+    Object.keys(state.days).forEach(function (date) { paintDay(date); });
 
     $('loading').classList.add('hidden');
     $('main').classList.remove('hidden');
