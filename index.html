@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>シフト希望提出</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif; background: #faf6f0; color: #3a2e26; }
+  header { background: #6f4e37; color: #fff; padding: 14px 16px; position: sticky; top: 0; z-index: 10; }
+  header .shop { font-size: 12px; opacity: .85; }
+  header h1 { font-size: 19px; margin: 2px 0 4px; }
+  header .meta { font-size: 12.5px; line-height: 1.5; opacity: .95; }
+  header .meta b { color: #ffd9a0; }
+  .wrap { padding: 12px 12px 110px; max-width: 560px; margin: 0 auto; }
+  .bulk { background: #fff; border: 1px solid #e7dccf; border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; }
+  .bulk .t { font-size: 12px; color: #8a7461; margin-bottom: 8px; }
+  .bulk .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { font-family: inherit; cursor: pointer; }
+  .bbtn { border: 1px solid #cbb59c; background: #fdfaf6; color: #6f4e37; border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600; }
+  .bbtn:active { background: #f0e4d3; }
+  .day { background: #fff; border: 1px solid #e7dccf; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+  .day.sun { border-left: 5px solid #d9534f; }
+  .day.sat { border-left: 5px solid #4a7ebb; }
+  .day .head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .day .date { font-size: 16px; font-weight: 700; }
+  .day .dow { font-size: 13px; color: #8a7461; }
+  .day.sun .dow { color: #d9534f; } .day.sat .dow { color: #4a7ebb; }
+  .day .state { margin-left: auto; font-size: 12px; color: #a08b76; }
+  .day .state.set { color: #6f4e37; font-weight: 700; }
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; border: 1.5px solid #d8c6ae; background: #fff; color: #6f4e37; border-radius: 9px; padding: 9px 0; font-size: 13.5px; font-weight: 700; }
+  .seg button.on { background: #6f4e37; border-color: #6f4e37; color: #fff; }
+  .seg button.off.on { background: #8a8a8a; border-color: #8a8a8a; }
+  .times { display: none; align-items: center; gap: 8px; margin-top: 9px; }
+  .times.show { display: flex; }
+  .times input[type="time"] { font-size: 16px; padding: 6px 8px; border: 1px solid #cbb59c; border-radius: 8px; background: #fdfaf6; color: #3a2e26; }
+  .times .tilde { color: #8a7461; }
+  .times .hint { font-size: 11.5px; color: #a08b76; }
+  .memo { background: #fff; border: 1px solid #e7dccf; border-radius: 12px; padding: 10px 12px; margin-top: 4px; }
+  .memo .t { font-size: 12px; color: #8a7461; margin-bottom: 6px; }
+  .memo textarea { width: 100%; border: 1px solid #d8c6ae; border-radius: 8px; padding: 8px; font-size: 14px; font-family: inherit; min-height: 56px; resize: vertical; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(250,246,240,.97); border-top: 1px solid #e7dccf; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  footer .inner { max-width: 560px; margin: 0 auto; }
+  #saveBtn { width: 100%; background: #06c755; color: #fff; border: none; border-radius: 12px; padding: 15px 0; font-size: 17px; font-weight: 800; }
+  #saveBtn:disabled { background: #b9b0a6; }
+  #status { text-align: center; font-size: 12.5px; color: #8a7461; margin-top: 7px; min-height: 16px; }
+  .notice { background: #fff3cd; border: 1px solid #e6cf8a; color: #6b5510; border-radius: 12px; padding: 12px; font-size: 14px; line-height: 1.6; margin-bottom: 12px; display: none; }
+  #loading { text-align: center; padding: 40px 0; color: #8a7461; font-size: 14px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="shop">Mitsume Coffee</div>
+  <h1>シフト希望提出（<span id="monthLabel">…</span>）</h1>
+  <div class="meta">
+    <span id="userName"></span> さん<br>
+    締切：<b id="deadline">…</b>（締切までは何度でも変更できます）<br>
+    <span id="lastSaved"></span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="loading">読み込み中…</div>
+
+  <div id="main" class="hidden">
+    <div class="notice" id="lockedNotice">締切を過ぎたため、提出・変更はできません。変更が必要な場合は店長に連絡してください。</div>
+
+    <div class="bulk" id="bulkBox">
+      <div class="t">まとめて入力（あとから日ごとに直せます）</div>
+      <div class="row">
+        <button class="bbtn" data-bulk="all-full">全部の日を「全部OK」</button>
+        <button class="bbtn" data-bulk="weekday-full">平日は全部OK・土日は休み</button>
+        <button class="bbtn" data-bulk="all-off">全部の日を「休み」</button>
+        <button class="bbtn" data-bulk="clear">クリア</button>
+      </div>
+    </div>
+
+    <div id="days"></div>
+
+    <div class="memo">
+      <div class="t">メモ（任意）例：テスト期間なので◯日は早めに上がりたいです、など</div>
+      <textarea id="memo" placeholder="伝えたいことがあれば書いてください"></textarea>
+    </div>
+  </div>
+</div>
+
+<footer id="footer" class="hidden">
+  <div class="inner">
+    <button id="saveBtn">この内容で提出する</button>
+    <div id="status"></div>
+  </div>
+</footer>
+
+<script>
+  var LIFF_ID = '2012734423-wNqztLhN';
+  var PRESETS = {"full":{"label":"全部OK","start":"08:30","end":"17:00"},"early":{"label":"早番OK","start":"08:30","end":"14:30"},"late":{"label":"遅番OK","start":"11:00","end":"17:00"}};
+  var state = { days: {}, locked: false, month: '' };
+
+  var API_URL = 'https://script.google.com/macros/s/AKfycbzTxGUDPTMolQJ1IA4zhnUDvGxKIcROgPqXP9WjBGQwVHLkoJEe0nP3L6sTW0SSHD4y/exec';
+  var cbSeq = 0;
+  function api(action, params) {
+    return new Promise(function (resolve, reject) {
+      var cb = 'jsonpCb' + (++cbSeq) + '_' + Date.now();
+      var script = document.createElement('script');
+      var timer = setTimeout(function () { cleanup(); reject(new Error('通信がタイムアウトしました')); }, 30000);
+      function cleanup() { clearTimeout(timer); try { delete window[cb]; } catch (e) { window[cb] = undefined; } if (script.parentNode) script.parentNode.removeChild(script); }
+      window[cb] = function (res) { cleanup(); if (res && res.ok) resolve(res.data); else reject(new Error((res && res.error) || 'サーバーエラー')); };
+      var qs = ['api=1', 'action=' + encodeURIComponent(action), 'callback=' + cb];
+      Object.keys(params || {}).forEach(function (k) { qs.push(k + '=' + encodeURIComponent(params[k])); });
+      script.src = API_URL + '?' + qs.join('&');
+      script.onerror = function () { cleanup(); reject(new Error('通信に失敗しました')); };
+      document.body.appendChild(script);
+    });
+  }
+  function $(id) { return document.getElementById(id); }
+  function setLoading(text) { $('loading').textContent = text; }
+
+  async function init() {
+    try {
+      setLoading('初期化中…');
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { setLoading('LINEログインへ移動します…'); liff.login(); return; }
+      setLoading('データ取得中…');
+      var idToken = liff.getIDToken();
+      if (!idToken) { setLoading('ログイン情報が取得できませんでした。LINEアプリから開き直してください。'); return; }
+      var profile = await liff.getProfile().catch(function () { return { displayName: '' }; });
+      var data = await api('getInitialData', { idToken: idToken, name: profile.displayName || '' });
+      render(data);
+    } catch (e) {
+      setLoading('読み込みに失敗しました：' + (e && e.message ? e.message : e));
+      console.error(e);
+    }
+  }
+
+  function render(data) {
+    state.month = data.month;
+    state.locked = data.locked;
+    $('monthLabel').textContent = data.monthLabel;
+    $('userName').textContent = data.name || '';
+    $('deadline').textContent = data.deadlineText;
+    if (data.updatedAt) $('lastSaved').textContent = '前回の提出：' + data.updatedAt;
+    $('memo').value = data.memo || '';
+
+    var box = $('days');
+    box.innerHTML = '';
+    data.days.forEach(function (d) {
+      state.days[d.date] = d.saved ? { type: d.saved.type, start: d.saved.start, end: d.saved.end } : null;
+      box.appendChild(dayElement(d));
+    });
+
+    $('loading').classList.add('hidden');
+    $('main').classList.remove('hidden');
+    $('footer').classList.remove('hidden');
+    if (data.locked) {
+      $('lockedNotice').style.display = 'block';
+      $('bulkBox').classList.add('hidden');
+      $('saveBtn').disabled = true;
+      $('saveBtn').textContent = '締切済み';
+      document.querySelectorAll('#days button, #days input, #memo').forEach(function (el) { el.disabled = true; });
+    }
+  }
+
+  function dayElement(d) {
+    var el = document.createElement('div');
+    el.className = 'day' + (d.isSun ? ' sun' : d.isSat ? ' sat' : '');
+    el.dataset.date = d.date;
+    el.innerHTML =
+      '<div class="head"><span class="date">' + d.day + '日</span><span class="dow">（' + d.dow + '）</span>' +
+      '<span class="state"></span></div>' +
+      '<div class="seg">' +
+      '<button data-t="full">全部OK</button>' +
+      '<button data-t="early">早番OK</button>' +
+      '<button data-t="late">遅番OK</button>' +
+      '<button data-t="off" class="off">休み</button>' +
+      '</div>' +
+      '<div class="times"><input type="time" class="st" step="900"><span class="tilde">〜</span>' +
+      '<input type="time" class="en" step="900"><span class="hint">ボタンで入れた時間を直すこともできます</span></div>';
+
+    el.querySelectorAll('.seg button').forEach(function (b) {
+      b.addEventListener('click', function () { setDay(d.date, b.dataset.t); });
+    });
+    el.querySelector('.st').addEventListener('change', function (ev) { editTime(d.date, 'start', ev.target.value); });
+    el.querySelector('.en').addEventListener('change', function (ev) { editTime(d.date, 'end', ev.target.value); });
+    paintDay(d.date);
+    return el;
+  }
+
+  function setDay(date, type) {
+    if (state.locked) return;
+    if (type === 'off') state.days[date] = { type: 'off', start: '', end: '' };
+    else state.days[date] = { type: type, start: PRESETS[type].start, end: PRESETS[type].end };
+    paintDay(date);
+  }
+
+  function editTime(date, which, value) {
+    if (state.locked || !value) return;
+    var cur = state.days[date];
+    if (!cur || cur.type === 'off') return;
+    cur[which] = value;
+    // プリセットと一致すればその区分、ずれればカスタム
+    cur.type = 'custom';
+    for (var k in PRESETS) {
+      if (PRESETS[k].start === cur.start && PRESETS[k].end === cur.end) cur.type = k;
+    }
+    paintDay(date);
+  }
+
+  function paintDay(date) {
+    var el = document.querySelector('.day[data-date="' + date + '"]');
+    if (!el) return;
+    var cur = state.days[date];
+    el.querySelectorAll('.seg button').forEach(function (b) {
+      b.classList.toggle('on', !!cur && cur.type === b.dataset.t);
+    });
+    var times = el.querySelector('.times');
+    var st = el.querySelector('.st'), en = el.querySelector('.en');
+    var stateEl = el.querySelector('.state');
+    if (cur && cur.type !== 'off') {
+      times.classList.add('show');
+      st.value = cur.start; en.value = cur.end;
+      var label = cur.type === 'custom' ? 'カスタム' : PRESETS[cur.type].label;
+      stateEl.textContent = label + ' ' + cur.start + '〜' + cur.end;
+      stateEl.classList.add('set');
+    } else if (cur && cur.type === 'off') {
+      times.classList.remove('show');
+      stateEl.textContent = '休み';
+      stateEl.classList.add('set');
+    } else {
+      times.classList.remove('show');
+      stateEl.textContent = '未入力';
+      stateEl.classList.remove('set');
+    }
+  }
+
+  // まとめて入力
+  document.querySelectorAll('[data-bulk]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (state.locked) return;
+      var mode = b.dataset.bulk;
+      if (!confirm('いま入力している内容を上書きします。よろしいですか？')) return;
+      Object.keys(state.days).forEach(function (date) {
+        var dow = new Date(date + 'T00:00:00+09:00').getDay();
+        var weekend = (dow === 0 || dow === 6);
+        if (mode === 'all-full') setDay(date, 'full');
+        else if (mode === 'all-off') setDay(date, 'off');
+        else if (mode === 'weekday-full') setDay(date, weekend ? 'off' : 'full');
+        else if (mode === 'clear') { state.days[date] = null; paintDay(date); }
+      });
+    });
+  });
+
+  // 提出
+  $('saveBtn').addEventListener('click', async function () {
+    if (state.locked) return;
+    var days = {};
+    var count = 0;
+    Object.keys(state.days).forEach(function (date) {
+      if (state.days[date]) { days[date] = state.days[date]; count++; }
+    });
+    if (count === 0) { $('status').textContent = '1日も入力されていません。'; return; }
+    $('saveBtn').disabled = true;
+    $('status').textContent = '送信中…';
+    try {
+      var idToken = liff.getIDToken();
+      var profile = await liff.getProfile().catch(function () { return { displayName: '' }; });
+      var res = await api('saveSubmission', { idToken: idToken, name: profile.displayName || '', payload: JSON.stringify({ month: state.month, days: days, memo: $('memo').value }) });
+      $('status').textContent = '提出しました（' + res.updatedAt + '）。締切までは変更できます。';
+      $('lastSaved').textContent = '前回の提出：' + res.updatedAt;
+    } catch (e) {
+      $('status').textContent = '送信に失敗しました：' + (e && e.message ? e.message : e);
+    } finally {
+      $('saveBtn').disabled = false;
+    }
+  });
+
+  init();
+</script>
+</body>
+</html>
