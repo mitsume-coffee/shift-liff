@@ -7,31 +7,33 @@
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body { margin: 0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif; background: #faf6f0; color: #3a2e26; }
-  header { background: #6f4e37; color: #fff; padding: 14px 16px; position: sticky; top: 0; z-index: 10; }
-  header .shop { font-size: 12px; opacity: .85; }
-  header h1 { font-size: 19px; margin: 2px 0 4px; }
-  header .meta { font-size: 12.5px; line-height: 1.5; opacity: .95; }
-  header .meta b { color: #ffd9a0; }
+  body { margin: 0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif; background: #fbf9f1; color: #33302a; }
+  header { position: sticky; top: 0; z-index: 10; box-shadow: 0 1px 6px rgba(0,0,0,.18); }
+  .brandbar { background: #fff; padding: 8px 16px 6px; }
+  .brandbar .logo { height: 42px; display: block; }
+  .titlebar { background: #0A5A0B; color: #fff; padding: 10px 16px 12px; }
+  header h1 { font-size: 19px; margin: 0 0 4px; }
+  header .meta { font-size: 12.5px; line-height: 1.5; opacity: .97; }
+  header .meta b { color: #FFED00; }
   .wrap { padding: 12px 12px 110px; max-width: 560px; margin: 0 auto; }
   .bulk { background: #fff; border: 1px solid #e7dccf; border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; }
-  .bulk .t { font-size: 12px; color: #8a7461; margin-bottom: 8px; }
+  .bulk .t { font-size: 12px; color: #836312; margin-bottom: 8px; }
   .bulk .row { display: flex; flex-wrap: wrap; gap: 6px; }
   button { font-family: inherit; cursor: pointer; }
-  .bbtn { border: 1px solid #cbb59c; background: #fdfaf6; color: #6f4e37; border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600; }
-  .bbtn:active { background: #f0e4d3; }
+  .bbtn { border: 1px solid #cbbfa0; background: #fffdf4; color: #836312; border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600; }
+  .bbtn:active { background: #fdf6d8; }
   .day { background: #fff; border: 1px solid #e7dccf; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
   .day.sun { border-left: 5px solid #d9534f; }
   .day.sat { border-left: 5px solid #4a7ebb; }
   .day .head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
   .day .date { font-size: 16px; font-weight: 700; }
-  .day .dow { font-size: 13px; color: #8a7461; }
+  .day .dow { font-size: 13px; color: #836312; }
   .day.sun .dow { color: #d9534f; } .day.sat .dow { color: #4a7ebb; }
   .day .state { margin-left: auto; font-size: 12px; color: #a08b76; }
-  .day .state.set { color: #6f4e37; font-weight: 700; }
+  .day .state.set { color: #0A5A0B; font-weight: 700; }
   .seg { display: flex; gap: 6px; }
-  .seg button { flex: 1; border: 1.5px solid #d8c6ae; background: #fff; color: #6f4e37; border-radius: 9px; padding: 9px 0; font-size: 13.5px; font-weight: 700; }
-  .seg button.on { background: #6f4e37; border-color: #6f4e37; color: #fff; }
+  .seg button { flex: 1; border: 1.5px solid #cfd8c8; background: #fff; color: #0A5A0B; border-radius: 9px; padding: 9px 0; font-size: 13.5px; font-weight: 700; }
+  .seg button.on { background: #0A5A0B; border-color: #0A5A0B; color: #fff; }
   .seg button.off.on { background: #8a8a8a; border-color: #8a8a8a; }
   .times { display: none; align-items: center; gap: 8px; margin-top: 9px; }
   .times.show { display: flex; }
@@ -39,26 +41,28 @@
   .times .tilde { color: #8a7461; }
   .times .hint { font-size: 11.5px; color: #a08b76; }
   .memo { background: #fff; border: 1px solid #e7dccf; border-radius: 12px; padding: 10px 12px; margin-top: 4px; }
-  .memo .t { font-size: 12px; color: #8a7461; margin-bottom: 6px; }
+  .memo .t { font-size: 12px; color: #836312; margin-bottom: 6px; }
   .memo textarea { width: 100%; border: 1px solid #d8c6ae; border-radius: 8px; padding: 8px; font-size: 14px; font-family: inherit; min-height: 56px; resize: vertical; }
   footer { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(250,246,240,.97); border-top: 1px solid #e7dccf; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
   footer .inner { max-width: 560px; margin: 0 auto; }
-  #saveBtn { width: 100%; background: #06c755; color: #fff; border: none; border-radius: 12px; padding: 15px 0; font-size: 17px; font-weight: 800; }
+  #saveBtn { width: 100%; background: #0A5A0B; color: #fff; border: none; border-radius: 12px; padding: 15px 0; font-size: 17px; font-weight: 800; }
   #saveBtn:disabled { background: #b9b0a6; }
   #status { text-align: center; font-size: 12.5px; color: #8a7461; margin-top: 7px; min-height: 16px; }
   .notice { background: #fff3cd; border: 1px solid #e6cf8a; color: #6b5510; border-radius: 12px; padding: 12px; font-size: 14px; line-height: 1.6; margin-bottom: 12px; display: none; }
-  #loading { text-align: center; padding: 40px 0; color: #8a7461; font-size: 14px; }
+  #loading { text-align: center; padding: 40px 0; color: #836312; font-size: 14px; }
   .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <header>
-  <div class="shop">Mitsume Coffee</div>
+  <div class="brandbar"><img class="logo" src="Logo三ツ目2nd完成透過.png" alt="三ツ目珈琲"></div>
+  <div class="titlebar">
   <h1>シフト希望提出（<span id="monthLabel">…</span>）</h1>
   <div class="meta">
     <span id="userName"></span> さん<br>
     締切：<b id="deadline">…</b>（締切までは何度でも変更できます）<br>
     <span id="lastSaved"></span>
+  </div>
   </div>
 </header>
 
