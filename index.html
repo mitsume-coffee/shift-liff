@@ -226,6 +226,7 @@
   }
 
   function paintDay(date) {
+    if (state.closed[date]) return; // 休業日は描画対象外（入力欄がない）
     var el = document.querySelector('.day[data-date="' + date + '"]');
     if (!el) return;
     var cur = state.days[date];
