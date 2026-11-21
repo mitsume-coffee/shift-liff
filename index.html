@@ -24,6 +24,9 @@
   .bbtn:active { background: #fdf6d8; }
   .day { background: #fff; border: 1px solid #e7dccf; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
   .day.sun { border-left: 5px solid #d9534f; }
+  .day.closed { background: #eceae4; border-color: #ddd8cc; opacity: .6; }
+  .day.closed .date, .day.closed .dow { color: #8a8578; }
+  .day.closed .state { color: #8a8578; font-weight: 700; }
   .day.sat { border-left: 5px solid #4a7ebb; }
   .day .head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
   .day .date { font-size: 16px; font-weight: 700; }
@@ -101,7 +104,7 @@
 <script>
   var LIFF_ID = '2012734423-wNqztLhN';
   var PRESETS = {"full":{"label":"全部OK","start":"08:30","end":"17:00"},"early":{"label":"早番OK","start":"08:30","end":"14:30"},"late":{"label":"遅番OK","start":"11:00","end":"17:00"}};
-  var state = { days: {}, locked: false, month: '' };
+  var state = { days: {}, locked: false, month: '', closed: {} };
 
   var API_URL = 'https://script.google.com/macros/s/AKfycbzTxGUDPTMolQJ1IA4zhnUDvGxKIcROgPqXP9WjBGQwVHLkoJEe0nP3L6sTW0SSHD4y/exec';
   var cbSeq = 0;
@@ -151,7 +154,8 @@
     var box = $('days');
     box.innerHTML = '';
     data.days.forEach(function (d) {
-      state.days[d.date] = d.saved ? { type: d.saved.type, start: d.saved.start, end: d.saved.end } : null;
+      state.closed[d.date] = d.closed || null;
+      state.days[d.date] = d.closed ? null : (d.saved ? { type: d.saved.type, start: d.saved.start, end: d.saved.end } : null);
       box.appendChild(dayElement(d));
     });
     // 追加した要素がDOMに入ったあとで、保存済みの状態を再描画する
@@ -171,8 +175,15 @@
 
   function dayElement(d) {
     var el = document.createElement('div');
-    el.className = 'day' + (d.isSun ? ' sun' : d.isSat ? ' sat' : '');
     el.dataset.date = d.date;
+    if (d.closed) {
+      el.className = 'day closed';
+      el.innerHTML =
+        '<div class="head"><span class="date">' + d.day + '日</span><span class="dow">（' + d.dow + '）</span>' +
+        '<span class="state">' + d.closed + '</span></div>';
+      return el;
+    }
+    el.className = 'day' + (d.isSun ? ' sun' : d.isSat ? ' sat' : '');
     el.innerHTML =
       '<div class="head"><span class="date">' + d.day + '日</span><span class="dow">（' + d.dow + '）</span>' +
       '<span class="state"></span></div>' +
@@ -195,7 +206,7 @@
   }
 
   function setDay(date, type) {
-    if (state.locked) return;
+    if (state.locked || state.closed[date]) return;
     if (type === 'off') state.days[date] = { type: 'off', start: '', end: '' };
     else state.days[date] = { type: type, start: PRESETS[type].start, end: PRESETS[type].end };
     paintDay(date);
