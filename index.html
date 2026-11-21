@@ -258,7 +258,6 @@
     b.addEventListener('click', function () {
       if (state.locked) return;
       var mode = b.dataset.bulk;
-      if (!confirm('いま入力している内容を上書きします。よろしいですか？')) return;
       Object.keys(state.days).forEach(function (date) {
         var dow = new Date(date + 'T00:00:00+09:00').getDay();
         var weekend = (dow === 0 || dow === 6);
