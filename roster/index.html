@@ -94,6 +94,7 @@
 
   function render() {
     var d = roster;
+    var mon = parseInt(d.month.split('-')[1], 10);
     document.getElementById('meta').textContent = d.monthLabel + (d.me ? '（' + d.me + ' さんのシフト）' : '');
     var mine = document.getElementById('mine');
     if (!d.me) {
@@ -107,7 +108,7 @@
       } else {
         mine.innerHTML = days.map(function (r) {
           var cls = r.wd === '日' ? 'sun' : (r.wd === '土' ? 'sat' : '');
-          return '<div class="myday"><span class="' + cls + '">' + r.day + '日（' + r.wd + '）</span><span class="t">' + esc(r.cells[d.me].replace('-', '〜')) + '</span></div>';
+          return '<div class="myday"><span class="' + cls + '">' + mon + '/' + r.day + '（' + r.wd + '）</span><span class="t">' + esc(r.cells[d.me].replace('-', '〜')) + '</span></div>';
         }).join('') + '<div class="note">出勤日数：' + days.length + '日</div>';
       }
     }
@@ -123,7 +124,7 @@
       var cells = cols.map(function (c) {
         return '<td' + (c === d.me && r.cells[c] ? ' class="me"' : '') + '>' + esc(r.cells[c] || '') + '</td>';
       }).join('');
-      return '<tr class="' + cls + '"><td class="d">' + r.day + '</td><td class="w">' + r.wd + '</td>' + cells + '</tr>';
+      return '<tr class="' + cls + '"><td class="d">' + mon + '/' + r.day + '</td><td class="w">' + r.wd + '</td>' + cells + '</tr>';
     }).join('');
     document.getElementById('all').innerHTML = t;
   }
