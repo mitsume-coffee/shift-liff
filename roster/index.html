@@ -28,6 +28,7 @@
   td.me, th.me { background: #fff3a6; }
   .btn { display: block; width: 100%; box-sizing: border-box; border: none; border-radius: 999px; padding: 13px; font-size: 15px; font-weight: 700; background: #0A5A0B; color: #fff; margin-top: 14px; }
   .btn:active { opacity: .85; }
+  .btn.sub { background: #595959; margin: 0 0 10px; padding: 10px; font-size: 13.5px; }
   .note { font-size: 12px; color: #8a8578; line-height: 1.7; margin-top: 10px; }
   #status { padding: 30px 0; text-align: center; color: #8a8578; font-size: 14px; }
   .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -46,6 +47,7 @@
     <button class="btn" id="icsBtn">自分のシフトをカレンダーに追加（.ics）</button>
     <div class="note">ボタンで .ics ファイルをダウンロードして開くと、カレンダーに自分のシフトがまとめて入ります。LINEの中でうまくいかない時は、右上のメニューから外部ブラウザで開いて試してください。</div>
     <h2>全体のシフト表</h2>
+    <button class="btn sub" id="viewToggle">自分だけ表示</button>
     <div class="scroll"><table id="all"></table></div>
   </div>
 </main>
@@ -54,6 +56,7 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzTxGUDPTMolQJ1IA4zhnUDvGxKIcROgPqXP9WjBGQwVHLkoJEe0nP3L6sTW0SSHD4y/exec';
   var cbSeq = 0;
   var roster = null;
+  var onlyMe = false;
 
   function jsonp(action, params) {
     return new Promise(function (resolve, reject) {
@@ -108,19 +111,27 @@
         }).join('') + '<div class="note">出勤日数：' + days.length + '日</div>';
       }
     }
-    var t = '<tr><th>日</th><th>曜</th>' + d.columns.map(function (c) {
+    var cols = (onlyMe && d.me) ? [d.me] : d.columns;
+    document.getElementById('viewToggle').style.display = d.me ? 'block' : 'none';
+    document.getElementById('viewToggle').textContent = onlyMe ? '全員表示' : '自分だけ表示';
+    var t = '<tr><th>日</th><th>曜</th>' + cols.map(function (c) {
       return '<th' + (c === d.me ? ' class="me"' : '') + '>' + esc(c) + '</th>';
     }).join('') + '</tr>';
     t += d.rows.map(function (r) {
-      var has = d.columns.some(function (c) { return r.cells[c]; });
+      var has = cols.some(function (c) { return r.cells[c]; });
       var cls = !has ? 'r-closed' : (r.wd === '日' ? 'r-sun' : (r.wd === '土' ? 'r-sat' : ''));
-      var cells = d.columns.map(function (c) {
+      var cells = cols.map(function (c) {
         return '<td' + (c === d.me && r.cells[c] ? ' class="me"' : '') + '>' + esc(r.cells[c] || '') + '</td>';
       }).join('');
       return '<tr class="' + cls + '"><td class="d">' + r.day + '</td><td class="w">' + r.wd + '</td>' + cells + '</tr>';
     }).join('');
     document.getElementById('all').innerHTML = t;
   }
+
+  document.getElementById('viewToggle').addEventListener('click', function () {
+    onlyMe = !onlyMe;
+    if (roster) render();
+  });
 
   document.getElementById('icsBtn').addEventListener('click', function () {
     if (!roster || !roster.me) return;
