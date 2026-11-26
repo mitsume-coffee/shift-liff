@@ -11,10 +11,15 @@
   .brandbar { background: #fff; padding: 8px 16px 6px; }
   .brandbar .logo { height: 42px; display: block; margin: 0 auto; }
   .titlebar { background: #0A5A0B; color: #fff; padding: 10px 16px 12px; }
+  .titlerow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   header h1 { font-size: 19px; margin: 0; }
-  header .meta { font-size: 12.5px; margin-top: 4px; opacity: .97; }
+  header .who { font-size: 12.5px; white-space: nowrap; }
+  .navbar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .navbtn { flex: 0 0 auto; width: 44px; height: 36px; border: none; border-radius: 999px; background: rgba(255,255,255,.22); color: #fff; font-size: 15px; font-weight: 700; }
+  .navbtn:disabled { opacity: .3; }
+  .navbtn:active { opacity: .75; }
+  .period { flex: 1; text-align: center; font-size: 15px; font-weight: 700; }
   main { padding: 14px 14px 40px; max-width: 860px; margin: 0 auto; }
-  h2 { font-size: 15px; color: #0A5A0B; margin: 20px 0 8px; }
   table { border-collapse: collapse; width: 100%; background: #fff; font-size: 11.5px; }
   th, td { border: 1px solid #b9b2a4; padding: 4px 3px; text-align: center; white-space: nowrap; }
   th { background: #595959; color: #fff; }
@@ -27,12 +32,25 @@
   .note { font-size: 12px; color: #8a8578; line-height: 1.7; margin-top: 10px; }
   #status { padding: 30px 0; text-align: center; color: #8a8578; font-size: 14px; }
   .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  @media (orientation: landscape) {
+    main { max-width: 100%; padding: 10px 12px 32px; }
+    table { font-size: 12.5px; }
+    .brandbar .logo { height: 34px; }
+    .titlebar { padding: 8px 16px 10px; }
+  }
 </style>
 </head>
 <body>
 <header>
   <div class="brandbar"><a href="https://mitsume-coffee.github.io/shift-liff/portal/"><img class="logo" src="../Logo三ツ目2nd完成透過.png" alt="三ツ目珈琲"></a></div>
-  <div class="titlebar"><h1>シフト照会</h1><div class="meta" id="meta">読み込み中…</div></div>
+  <div class="titlebar">
+    <div class="titlerow"><h1>シフト照会</h1><div class="who" id="who"></div></div>
+    <div class="navbar">
+      <button class="navbtn" id="prevBtn" disabled>◀</button>
+      <div class="period" id="periodLabel">読み込み中…</div>
+      <button class="navbtn" id="nextBtn" disabled>▶</button>
+    </div>
+  </div>
 </header>
 <main>
   <div id="status">読み込み中…</div>
@@ -49,6 +67,9 @@
   var cbSeq = 0;
   var roster = null;
   var onlyMe = false;
+  var currentKey = '';
+  var idToken = '';
+  var displayName = '';
 
   function jsonp(action, params) {
     return new Promise(function (resolve, reject) {
@@ -65,7 +86,7 @@
     });
   }
 
-  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function esc(s) { return String(s).replace(/[&<>\"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   async function main() {
     var status = document.getElementById('status');
@@ -73,28 +94,46 @@
       status.textContent = 'エラー：' + (e.message || '不明なエラー');
     });
     try {
-      status.textContent = '初期化中…';
+      document.getElementById('periodLabel').textContent = '初期化中…';
       await liff.init({ liffId: LIFF_ID });
-      if (!liff.isLoggedIn()) { status.textContent = 'LINEログインへ移動します…'; liff.login(); return; }
-      status.textContent = 'データ取得中…';
-      var idToken = liff.getIDToken();
-      var profile = null;
-      try { profile = await liff.getProfile(); } catch (e) { }
-      var res = await jsonp('getRoster', { idToken: idToken, name: profile ? profile.displayName : '' });
-      if (!res.ok) throw new Error(res.error || '取得に失敗しました');
-      roster = res.data;
-      render();
+      if (!liff.isLoggedIn()) { document.getElementById('periodLabel').textContent = 'LINEログインへ移動します…'; liff.login(); return; }
+      idToken = liff.getIDToken();
+      try { var profile = await liff.getProfile(); displayName = profile ? profile.displayName : ''; } catch (e) { }
+      await load('');
       status.style.display = 'none';
       document.getElementById('content').style.display = 'block';
     } catch (e) {
       status.textContent = '読み込めませんでした：' + (e.message || e);
+      document.getElementById('periodLabel').textContent = '読み込みエラー';
     }
+  }
+
+  async function load(key) {
+    document.getElementById('periodLabel').textContent = 'データ取得中…';
+    var res = await jsonp('getRoster', { idToken: idToken, name: displayName, period: key || '' });
+    if (!res.ok) throw new Error(res.error || '取得に失敗しました');
+    roster = res.data;
+    currentKey = roster.periodKey;
+    render();
+  }
+
+  function neighborKey(dir) {
+    if (!roster || !roster.periods) return '';
+    var idx = -1;
+    for (var i = 0; i < roster.periods.length; i++) {
+      if (roster.periods[i].key === currentKey) { idx = i; break; }
+    }
+    var n = idx + dir;
+    if (idx < 0 || n < 0 || n >= roster.periods.length) return '';
+    return roster.periods[n].key;
   }
 
   function render() {
     var d = roster;
-    var mon = parseInt(d.month.split('-')[1], 10);
-    document.getElementById('meta').textContent = d.monthLabel + (d.me ? '（' + d.me + ' さんのシフト）' : '');
+    document.getElementById('who').textContent = d.me ? d.me + ' さんのシフト' : '';
+    document.getElementById('periodLabel').textContent = d.label;
+    document.getElementById('prevBtn').disabled = !neighborKey(-1);
+    document.getElementById('nextBtn').disabled = !neighborKey(1);
     var myDays = d.me ? d.rows.filter(function (r) { return r.cells[d.me]; }) : [];
     document.getElementById('icsBtn').style.display = myDays.length ? 'block' : 'none';
     var cols = (onlyMe && d.me) ? [d.me] : d.columns;
@@ -109,10 +148,19 @@
       var cells = cols.map(function (c) {
         return '<td' + (c === d.me && r.cells[c] ? ' class="me"' : '') + '>' + esc(r.cells[c] || '') + '</td>';
       }).join('');
-      return '<tr class="' + cls + '"><td class="d">' + mon + '/' + r.day + '</td><td class="w">' + r.wd + '</td>' + cells + '</tr>';
+      return '<tr class="' + cls + '"><td class="d">' + esc(r.dayLabel) + '</td><td class="w">' + r.wd + '</td>' + cells + '</tr>';
     }).join('');
     document.getElementById('all').innerHTML = t;
   }
+
+  document.getElementById('prevBtn').addEventListener('click', async function () {
+    var k = neighborKey(-1);
+    if (k) { try { await load(k); } catch (e) { alert('読み込めませんでした：' + (e.message || e)); } }
+  });
+  document.getElementById('nextBtn').addEventListener('click', async function () {
+    var k = neighborKey(1);
+    if (k) { try { await load(k); } catch (e) { alert('読み込めませんでした：' + (e.message || e)); } }
+  });
 
   document.getElementById('viewToggle').addEventListener('click', function () {
     onlyMe = !onlyMe;
@@ -127,7 +175,7 @@
     var orig = btn.textContent;
     btn.textContent = '準備中…';
     try {
-      var res = await jsonp('getIcs', { idToken: liff.getIDToken() });
+      var res = await jsonp('getIcs', { idToken: idToken, period: currentKey });
       if (!res.ok) throw new Error(res.error || '取得に失敗しました');
       var payload = JSON.stringify({ me: res.data.me, label: res.data.monthLabel, ics: res.data.ics });
       var url = new URL('ics.html', location.href).href + '#' + btoa(unescape(encodeURIComponent(payload)));
