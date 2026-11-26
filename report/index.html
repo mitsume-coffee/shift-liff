@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>壊れ物報告 | Mitsume Coffee</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif; background: #faf7f1; color: #333; padding-bottom: 110px; }
+  .brand { background: #fff; padding: 8px 16px 6px; }
+  .brand img { height: 42px; display: block; margin: 0 auto; }
+  header { background: #0A5A0B; color: #fff; padding: 14px 16px; }
+  header h1 { margin: 0; font-size: 19px; }
+  header .sub { font-size: 12px; opacity: .9; margin-top: 4px; }
+  main { padding: 14px 16px; max-width: 640px; margin: 0 auto; }
+  .field { margin-bottom: 18px; }
+  .label { font-size: 13px; font-weight: 700; color: #836312; margin-bottom: 8px; }
+  .req { background: #b3261e; color: #fff; font-size: 10px; border-radius: 4px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px; }
+  .any { background: #999; color: #fff; font-size: 10px; border-radius: 4px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { border: 1px solid #cbbfa5; background: #fff; border-radius: 999px; padding: 8px 14px; font-size: 14px; color: #555; }
+  .chips button.on { background: #0A5A0B; border-color: #0A5A0B; color: #fff; font-weight: 700; }
+  .chips button.on.urg-high { background: #b3261e; border-color: #b3261e; }
+  input[type="text"], textarea { width: 100%; border: 1px solid #cbbfa5; border-radius: 10px; padding: 10px 12px; font-size: 16px; background: #fff; }
+  textarea { resize: vertical; }
+  input[type="file"] { font-size: 14px; }
+  #photoPreview { margin-top: 8px; }
+  #photoPreview img { max-width: 100%; border-radius: 10px; border: 1px solid #e7dccf; }
+  #photoPreview button { margin-top: 6px; border: 1px solid #cbbfa5; background: #fff; border-radius: 8px; padding: 6px 12px; font-size: 13px; color: #555; }
+  .err { color: #b3261e; font-size: 13px; min-height: 18px; margin-top: 4px; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #e7dccf; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  footer .inner { max-width: 640px; margin: 0 auto; }
+  #sendBtn { width: 100%; background: #0A5A0B; color: #fff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 700; }
+  #sendBtn:disabled { background: #9db89d; }
+  #status { text-align: center; font-size: 12px; color: #836312; margin-top: 6px; min-height: 16px; }
+  #loading { text-align: center; padding: 40px 0; color: #836312; }
+  .hidden { display: none; }
+  .done-card { background: #fff; border: 1px solid #e7dccf; border-radius: 14px; padding: 22px 18px; text-align: center; }
+  .done-title { font-size: 18px; font-weight: 700; color: #0A5A0B; margin-bottom: 10px; }
+  .done-num { font-size: 15px; margin-bottom: 8px; }
+  .done-card p { font-size: 13px; color: #666; }
+  #againBtn { margin-top: 10px; border: 1px solid #0A5A0B; color: #0A5A0B; background: #fff; border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="brand"><a href="https://mitsume-coffee.github.io/shift-liff/portal/"><img src="../Logo三ツ目2nd完成透過.png" alt="三ツ目珈琲"></a></div>
+<header>
+  <h1>壊れ物報告</h1>
+  <div class="sub">Mitsume Coffee</div>
+</header>
+
+<div id="loading">読み込み中…</div>
+
+<main id="main" class="hidden">
+  <div class="field">
+    <div class="label">カテゴリ<span class="req">必須</span></div>
+    <div class="chips" id="catChips">
+      <button type="button" data-cat="設備・機器">設備・機器</button>
+      <button type="button" data-cat="水まわり">水まわり</button>
+      <button type="button" data-cat="電気">電気</button>
+      <button type="button" data-cat="食器・備品">食器・備品</button>
+      <button type="button" data-cat="店内・建物">店内・建物</button>
+      <button type="button" data-cat="その他">その他</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <div class="label">何が壊れたか<span class="req">必須</span></div>
+    <input type="text" id="item" placeholder="例：水グラス、カップ、タッパー">
+  </div>
+
+  <div class="field">
+    <div class="label">症状・状況</div>
+    <textarea id="detail" rows="4" placeholder="例：洗っているときに落として割った"></textarea>
+  </div>
+
+  <div class="field">
+    <div class="label">緊急度</div>
+    <div class="chips" id="urgChips">
+      <button type="button" data-urg="high" class="urg-high">営業に支障あり</button>
+      <button type="button" data-urg="normal" class="on">急がない</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <div class="label">写真<span class="any">任意</span></div>
+    <input type="file" id="photo" accept="image/*">
+    <div id="photoPreview"></div>
+  </div>
+
+  <div class="err" id="err"></div>
+</main>
+
+<div id="done" class="hidden" style="padding:14px 16px; max-width:640px; margin:0 auto;">
+  <div class="done-card">
+    <div class="done-title">報告しました</div>
+    <div class="done-num">受付番号：<span id="doneNumber">—</span></div>
+    <p>ありがとうございます。店長にメールで知らせました。</p>
+    <button type="button" id="againBtn">続けて報告する</button>
+  </div>
+</div>
+
+<footer id="footer" class="hidden">
+  <div class="inner">
+    <button id="sendBtn">報告する</button>
+    <div id="status"></div>
+  </div>
+</footer>
+
+<script>
+  var LIFF_ID = '2012734423-dIDvKWqD';
+  var API_URL = 'https://script.google.com/macros/s/AKfycbwkvk8tJkn8rY4Kf6WnBUFRCkSHgE0nEOImLm3xdg1Sys-1SELJOZrwsgXfGSoaJdKlYw/exec';
+
+  var state = { category: null, urgency: 'normal', photoData: '', name: '' };
+
+  function $(id) { return document.getElementById(id); }
+
+  /* 到達確認用の JSONP */
+  var cbSeq = 0;
+  function jsonp(params) {
+    return new Promise(function (resolve, reject) {
+      var cb = 'jsonpCb' + (++cbSeq) + '_' + Date.now();
+      var script = document.createElement('script');
+      var timer = setTimeout(function () { cleanup(); reject(new Error('timeout')); }, 15000);
+      function cleanup() { clearTimeout(timer); try { delete window[cb]; } catch (e) { window[cb] = undefined; } if (script.parentNode) script.parentNode.removeChild(script); }
+      window[cb] = function (res) { cleanup(); resolve(res); };
+      var qs = ['api=1', 'callback=' + cb];
+      Object.keys(params || {}).forEach(function (k) { qs.push(k + '=' + encodeURIComponent(params[k])); });
+      script.src = API_URL + '?' + qs.join('&');
+      script.onerror = function () { cleanup(); reject(new Error('network')); };
+      document.body.appendChild(script);
+    });
+  }
+
+  /* チップの単一選択 */
+  function chipSelect(boxId, attr, cb) {
+    $(boxId).querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        $(boxId).querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        cb(b.dataset[attr]);
+      });
+    });
+  }
+  chipSelect('catChips', 'cat', function (v) { state.category = v; });
+  chipSelect('urgChips', 'urg', function (v) { state.urgency = v; });
+
+  /* 写真：長辺1024pxに縮小して JPEG 化 */
+  $('photo').addEventListener('change', function (ev) {
+    var file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    var img = new Image();
+    img.onload = function () {
+      var max = 1024;
+      var scale = Math.min(1, max / Math.max(img.width, img.height));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      state.photoData = canvas.toDataURL('image/jpeg', 0.72);
+      URL.revokeObjectURL(img.src);
+      $('photoPreview').innerHTML = '';
+      var preview = document.createElement('img');
+      preview.src = state.photoData;
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.textContent = '写真を消す';
+      del.addEventListener('click', function () {
+        state.photoData = '';
+        $('photo').value = '';
+        $('photoPreview').innerHTML = '';
+      });
+      $('photoPreview').appendChild(preview);
+      $('photoPreview').appendChild(document.createElement('br'));
+      $('photoPreview').appendChild(del);
+    };
+    img.src = URL.createObjectURL(file);
+  });
+
+  async function init() {
+    try {
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login(); return; }
+      var profile = await liff.getProfile().catch(function () { return { displayName: '' }; });
+      state.name = profile.displayName || '';
+      $('loading').classList.add('hidden');
+      $('main').classList.remove('hidden');
+      $('footer').classList.remove('hidden');
+    } catch (e) {
+      $('loading').textContent = '読み込みに失敗しました：' + (e && e.message ? e.message : e);
+    }
+  }
+
+  $('sendBtn').addEventListener('click', async function () {
+    $('err').textContent = '';
+    var item = $('item').value.trim();
+    if (!state.category) { $('err').textContent = 'カテゴリを選んでください。'; return; }
+    if (!item) { $('err').textContent = '「何が壊れたか」を入力してください。'; return; }
+
+    var btn = $('sendBtn');
+    btn.disabled = true;
+    $('status').textContent = '送信中…';
+    var clientToken = 't' + Date.now() + Math.floor(Math.random() * 1000000);
+    try {
+      var idToken = liff.getIDToken();
+      await fetch(API_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          idToken: idToken,
+          name: state.name,
+          category: state.category,
+          item: item,
+          detail: $('detail').value.trim(),
+          urgency: state.urgency,
+          photo: state.photoData,
+          clientToken: clientToken
+        })
+      });
+      // サーバーに届いたかポーリングで確認する
+      var number = '';
+      for (var i = 0; i < 8 && !number; i++) {
+        await new Promise(function (r) { setTimeout(r, 2000); });
+        try {
+          var res = await jsonp({ action: 'check', token: clientToken });
+          if (res && res.ok && res.data && res.data.saved) number = res.data.number;
+        } catch (e) { /* 次のポーリングで再試行 */ }
+      }
+      $('doneNumber').textContent = number || '（確認できませんでした）';
+      $('main').classList.add('hidden');
+      $('footer').classList.add('hidden');
+      $('done').classList.remove('hidden');
+      window.scrollTo(0, 0);
+    } catch (e) {
+      $('err').textContent = '送信に失敗しました。電波の良いところでもう一度お試しください。';
+      btn.disabled = false;
+      $('status').textContent = '';
+    }
+  });
+
+  $('againBtn').addEventListener('click', function () {
+    state.category = null;
+    state.urgency = 'normal';
+    state.photoData = '';
+    $('item').value = '';
+    $('detail').value = '';
+    $('photo').value = '';
+    $('photoPreview').innerHTML = '';
+    $('catChips').querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
+    $('urgChips').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x.dataset.urg === 'normal'); });
+    $('sendBtn').disabled = false;
+    $('status').textContent = '';
+    $('done').classList.add('hidden');
+    $('main').classList.remove('hidden');
+    $('footer').classList.remove('hidden');
+    window.scrollTo(0, 0);
+  });
+
+  init();
+</script>
+</body>
+</html>
