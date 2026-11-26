@@ -53,9 +53,11 @@
   function jsonp(action, params) {
     return new Promise(function (resolve, reject) {
       var cb = 'jsonpCb' + (++cbSeq) + '_' + Date.now();
-      window[cb] = function (res) { delete window[cb]; script.remove(); resolve(res); };
       var script = document.createElement('script');
-      script.onerror = function () { delete window[cb]; script.remove(); reject(new Error('通信に失敗しました')); };
+      var timer = setTimeout(function () { cleanup(); reject(new Error('通信がタイムアウトしました')); }, 20000);
+      function cleanup() { clearTimeout(timer); delete window[cb]; script.remove(); }
+      window[cb] = function (res) { cleanup(); resolve(res); };
+      script.onerror = function () { cleanup(); reject(new Error('通信に失敗しました')); };
       var qs = ['api=1', 'action=' + encodeURIComponent(action), 'callback=' + cb];
       for (var k in params) qs.push(k + '=' + encodeURIComponent(params[k]));
       script.src = API_URL + '?' + qs.join('&');
@@ -63,13 +65,18 @@
     });
   }
 
-  function esc(s) { return String(s).replace(/[&<>"/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   async function main() {
     var status = document.getElementById('status');
+    window.addEventListener('error', function (e) {
+      status.textContent = 'エラー：' + (e.message || '不明なエラー');
+    });
     try {
+      status.textContent = '初期化中…';
       await liff.init({ liffId: LIFF_ID });
-      if (!liff.isLoggedIn()) { liff.login(); return; }
+      if (!liff.isLoggedIn()) { status.textContent = 'LINEログインへ移動します…'; liff.login(); return; }
+      status.textContent = 'データ取得中…';
       var idToken = liff.getIDToken();
       var profile = null;
       try { profile = await liff.getProfile(); } catch (e) { }
