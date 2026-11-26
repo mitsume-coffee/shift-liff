@@ -133,13 +133,28 @@
     if (roster) render();
   });
 
-  document.getElementById('icsBtn').addEventListener('click', function () {
-    var url = API_URL + '?ics=1&idToken=' + encodeURIComponent(liff.getIDToken());
-    if (liff.isInClient()) {
-      liff.openWindow({ url: url, external: true });
-    } else {
-      window.open(url, '_blank');
+  var icsBusy = false;
+  document.getElementById('icsBtn').addEventListener('click', async function () {
+    if (icsBusy) return;
+    icsBusy = true;
+    var btn = document.getElementById('icsBtn');
+    var orig = btn.textContent;
+    btn.textContent = '準備中…';
+    try {
+      var res = await jsonp('getIcs', { idToken: liff.getIDToken() });
+      if (!res.ok) throw new Error(res.error || '取得に失敗しました');
+      var payload = JSON.stringify({ me: res.data.me, label: res.data.monthLabel, ics: res.data.ics });
+      var url = new URL('ics.html', location.href).href + '#' + btoa(unescape(encodeURIComponent(payload)));
+      if (liff.isInClient()) {
+        liff.openWindow({ url: url, external: true });
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch (e) {
+      alert('カレンダー用データの取得に失敗しました：' + (e.message || e));
     }
+    btn.textContent = orig;
+    icsBusy = false;
   });
 
   main();
