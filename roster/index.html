@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>シフト照会 | Mitsume Coffee</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  body { margin: 0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif; background: #fbf9f1; color: #33302a; }
+  header { position: sticky; top: 0; z-index: 10; box-shadow: 0 1px 6px rgba(0,0,0,.18); }
+  .brandbar { background: #fff; padding: 8px 16px 6px; }
+  .brandbar .logo { height: 42px; display: block; margin: 0 auto; }
+  .titlebar { background: #0A5A0B; color: #fff; padding: 10px 16px 12px; }
+  header h1 { font-size: 19px; margin: 0; }
+  header .meta { font-size: 12.5px; margin-top: 4px; opacity: .97; }
+  main { padding: 14px 14px 40px; max-width: 860px; margin: 0 auto; }
+  h2 { font-size: 15px; color: #0A5A0B; margin: 20px 0 8px; }
+  .card { background: #fff; border: 1px solid #e7dccf; border-radius: 12px; padding: 12px 14px; }
+  .myday { display: flex; justify-content: space-between; padding: 7px 2px; border-bottom: 1px dashed #e7dccf; font-size: 14.5px; }
+  .myday:last-child { border-bottom: none; }
+  .myday .t { font-weight: 700; }
+  .sun { color: #c0392b; } .sat { color: #2471a3; }
+  table { border-collapse: collapse; width: 100%; background: #fff; font-size: 11.5px; }
+  th, td { border: 1px solid #b9b2a4; padding: 4px 3px; text-align: center; white-space: nowrap; }
+  th { background: #595959; color: #fff; }
+  td.d, td.w { font-weight: 700; }
+  tr.r-sun { background: #f9dee0; } tr.r-sat { background: #dbe7f5; } tr.r-closed { background: #e3e1db; color: #999; }
+  td.me, th.me { background: #fff3a6; }
+  .btn { display: block; width: 100%; box-sizing: border-box; border: none; border-radius: 999px; padding: 13px; font-size: 15px; font-weight: 700; background: #0A5A0B; color: #fff; margin-top: 14px; }
+  .btn:active { opacity: .85; }
+  .note { font-size: 12px; color: #8a8578; line-height: 1.7; margin-top: 10px; }
+  #status { padding: 30px 0; text-align: center; color: #8a8578; font-size: 14px; }
+  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brandbar"><a href="https://mitsume-coffee.github.io/shift-liff/portal/"><img class="logo" src="../Logo三ツ目2nd完成透過.png" alt="三ツ目珈琲"></a></div>
+  <div class="titlebar"><h1>シフト照会</h1><div class="meta" id="meta">読み込み中…</div></div>
+</header>
+<main>
+  <div id="status">読み込み中…</div>
+  <div id="content" style="display:none">
+    <h2>自分のシフト</h2>
+    <div class="card" id="mine"></div>
+    <button class="btn" id="icsBtn">自分のシフトをカレンダーに追加（.ics）</button>
+    <div class="note">ボタンで .ics ファイルをダウンロードして開くと、カレンダーに自分のシフトがまとめて入ります。LINEの中でうまくいかない時は、右上のメニューから外部ブラウザで開いて試してください。</div>
+    <h2>全体のシフト表</h2>
+    <div class="scroll"><table id="all"></table></div>
+  </div>
+</main>
+<script>
+  var LIFF_ID = '2012734423-APRgg27M';
+  var API_URL = 'https://script.google.com/macros/s/AKfycbzTxGUDPTMolQJ1IA4zhnUDvGxKIcROgPqXP9WjBGQwVHLkoJEe0nP3L6sTW0SSHD4y/exec';
+  var cbSeq = 0;
+  var roster = null;
+
+  function jsonp(action, params) {
+    return new Promise(function (resolve, reject) {
+      var cb = 'jsonpCb' + (++cbSeq) + '_' + Date.now();
+      window[cb] = function (res) { delete window[cb]; script.remove(); resolve(res); };
+      var script = document.createElement('script');
+      script.onerror = function () { delete window[cb]; script.remove(); reject(new Error('通信に失敗しました')); };
+      var qs = ['api=1', 'action=' + encodeURIComponent(action), 'callback=' + cb];
+      for (var k in params) qs.push(k + '=' + encodeURIComponent(params[k]));
+      script.src = API_URL + '?' + qs.join('&');
+      document.body.appendChild(script);
+    });
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  async function main() {
+    var status = document.getElementById('status');
+    try {
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login(); return; }
+      var idToken = liff.getIDToken();
+      var profile = null;
+      try { profile = await liff.getProfile(); } catch (e) { }
+      var res = await jsonp('getRoster', { idToken: idToken, name: profile ? profile.displayName : '' });
+      if (!res.ok) throw new Error(res.error || '取得に失敗しました');
+      roster = res.data;
+      render();
+      status.style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+    } catch (e) {
+      status.textContent = '読み込めませんでした：' + (e.message || e);
+    }
+  }
+
+  function render() {
+    var d = roster;
+    document.getElementById('meta').textContent = d.monthLabel + (d.me ? '（' + d.me + ' さんのシフト）' : '');
+    var mine = document.getElementById('mine');
+    if (!d.me) {
+      mine.innerHTML = '<div class="note">スタッフ登録が見つかりませんでした。全体のシフト表は下で見られます。</div>';
+      document.getElementById('icsBtn').style.display = 'none';
+    } else {
+      var days = d.rows.filter(function (r) { return r.cells[d.me]; });
+      if (!days.length) {
+        mine.innerHTML = '<div class="note">今月の出勤日はありません。</div>';
+        document.getElementById('icsBtn').style.display = 'none';
+      } else {
+        mine.innerHTML = days.map(function (r) {
+          var cls = r.wd === '日' ? 'sun' : (r.wd === '土' ? 'sat' : '');
+          return '<div class="myday"><span class="' + cls + '">' + r.day + '日（' + r.wd + '）</span><span class="t">' + esc(r.cells[d.me].replace('-', '〜')) + '</span></div>';
+        }).join('') + '<div class="note">出勤日数：' + days.length + '日</div>';
+      }
+    }
+    var t = '<tr><th>日</th><th>曜</th>' + d.columns.map(function (c) {
+      return '<th' + (c === d.me ? ' class="me"' : '') + '>' + esc(c) + '</th>';
+    }).join('') + '</tr>';
+    t += d.rows.map(function (r) {
+      var has = d.columns.some(function (c) { return r.cells[c]; });
+      var cls = !has ? 'r-closed' : (r.wd === '日' ? 'r-sun' : (r.wd === '土' ? 'r-sat' : ''));
+      var cells = d.columns.map(function (c) {
+        return '<td' + (c === d.me && r.cells[c] ? ' class="me"' : '') + '>' + esc(r.cells[c] || '') + '</td>';
+      }).join('');
+      return '<tr class="' + cls + '"><td class="d">' + r.day + '</td><td class="w">' + r.wd + '</td>' + cells + '</tr>';
+    }).join('');
+    document.getElementById('all').innerHTML = t;
+  }
+
+  document.getElementById('icsBtn').addEventListener('click', function () {
+    if (!roster || !roster.me) return;
+    var ym = roster.month.split('-');
+    var y = ym[0], m = ('0' + ym[1]).slice(-2);
+    var lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Mitsume Coffee//Shift//JA'];
+    roster.rows.forEach(function (r) {
+      var v = r.cells[roster.me];
+      if (!v) return;
+      var parts = v.split('-');
+      if (parts.length !== 2) return;
+      var dd = ('0' + r.day).slice(-2);
+      function ts(hhmm) { return y + m + dd + 'T' + hhmm.replace(':', '') + '00'; }
+      lines.push('BEGIN:VEVENT');
+      lines.push('UID:shift-' + roster.month + '-' + r.day + '-' + roster.me + '@mitsume-coffee');
+      lines.push('DTSTART;TZID=Asia/Tokyo:' + ts(parts[0]));
+      lines.push('DTEND;TZID=Asia/Tokyo:' + ts(parts[1]));
+      lines.push('SUMMARY:三ツ目珈琲 シフト');
+      lines.push('END:VEVENT');
+    });
+    lines.push('END:VCALENDAR');
+    var blob = new Blob([lines.join('\r\n')], { type: 'text/calendar' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'shift-' + roster.month + '.ics';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+
+  main();
+</script>
+</body>
+</html>
