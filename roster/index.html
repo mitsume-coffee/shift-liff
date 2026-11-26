@@ -45,7 +45,7 @@
     <h2>自分のシフト</h2>
     <div class="card" id="mine"></div>
     <button class="btn" id="icsBtn">自分のシフトをカレンダーに追加（.ics）</button>
-    <div class="note">ボタンで .ics ファイルをダウンロードして開くと、カレンダーに自分のシフトがまとめて入ります。LINEの中でうまくいかない時は、右上のメニューから外部ブラウザで開いて試してください。</div>
+    <div class="note">ボタンを押すと外部ブラウザが開きます。そちらでダウンロードし、ファイル（shift.ics）を開くと、カレンダーに自分のシフトがまとめて入ります。</div>
     <h2>全体のシフト表</h2>
     <button class="btn sub" id="viewToggle">自分だけ表示</button>
     <div class="scroll"><table id="all"></table></div>
@@ -134,32 +134,12 @@
   });
 
   document.getElementById('icsBtn').addEventListener('click', function () {
-    if (!roster || !roster.me) return;
-    var ym = roster.month.split('-');
-    var y = ym[0], m = ('0' + ym[1]).slice(-2);
-    var lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Mitsume Coffee//Shift//JA'];
-    roster.rows.forEach(function (r) {
-      var v = r.cells[roster.me];
-      if (!v) return;
-      var parts = v.split('-');
-      if (parts.length !== 2) return;
-      var dd = ('0' + r.day).slice(-2);
-      function ts(hhmm) { return y + m + dd + 'T' + hhmm.replace(':', '') + '00'; }
-      lines.push('BEGIN:VEVENT');
-      lines.push('UID:shift-' + roster.month + '-' + r.day + '-' + roster.me + '@mitsume-coffee');
-      lines.push('DTSTART;TZID=Asia/Tokyo:' + ts(parts[0]));
-      lines.push('DTEND;TZID=Asia/Tokyo:' + ts(parts[1]));
-      lines.push('SUMMARY:三ツ目珈琲 シフト');
-      lines.push('END:VEVENT');
-    });
-    lines.push('END:VCALENDAR');
-    var blob = new Blob([lines.join('\r\n')], { type: 'text/calendar' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'shift-' + roster.month + '.ics';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    var url = API_URL + '?ics=1&idToken=' + encodeURIComponent(liff.getIDToken());
+    if (liff.isInClient()) {
+      liff.openWindow({ url: url, external: true });
+    } else {
+      window.open(url, '_blank');
+    }
   });
 
   main();
