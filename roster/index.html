@@ -15,11 +15,6 @@
   header .meta { font-size: 12.5px; margin-top: 4px; opacity: .97; }
   main { padding: 14px 14px 40px; max-width: 860px; margin: 0 auto; }
   h2 { font-size: 15px; color: #0A5A0B; margin: 20px 0 8px; }
-  .card { background: #fff; border: 1px solid #e7dccf; border-radius: 12px; padding: 12px 14px; }
-  .myday { display: flex; justify-content: space-between; padding: 7px 2px; border-bottom: 1px dashed #e7dccf; font-size: 14.5px; }
-  .myday:last-child { border-bottom: none; }
-  .myday .t { font-weight: 700; }
-  .sun { color: #c0392b; } .sat { color: #2471a3; }
   table { border-collapse: collapse; width: 100%; background: #fff; font-size: 11.5px; }
   th, td { border: 1px solid #b9b2a4; padding: 4px 3px; text-align: center; white-space: nowrap; }
   th { background: #595959; color: #fff; }
@@ -42,13 +37,10 @@
 <main>
   <div id="status">読み込み中…</div>
   <div id="content" style="display:none">
-    <h2>自分のシフト</h2>
-    <div class="card" id="mine"></div>
-    <button class="btn" id="icsBtn">自分のシフトをカレンダーに追加（.ics）</button>
-    <div class="note">ボタンを押すと外部ブラウザが開きます。そちらでダウンロードし、ファイル（shift.ics）を開くと、カレンダーに自分のシフトがまとめて入ります。</div>
-    <h2>全体のシフト表</h2>
     <button class="btn sub" id="viewToggle">自分だけ表示</button>
     <div class="scroll"><table id="all"></table></div>
+    <button class="btn" id="icsBtn">自分のシフトをカレンダーに追加（.ics）</button>
+    <div class="note">ボタンを押すと外部ブラウザが開きます。そちらでダウンロードし、ファイル（shift.ics）を開くと、カレンダーに自分のシフトがまとめて入ります。</div>
   </div>
 </main>
 <script>
@@ -71,7 +63,7 @@
     });
   }
 
-  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function esc(s) { return String(s).replace(/[&<>"/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   async function main() {
     var status = document.getElementById('status');
@@ -96,22 +88,8 @@
     var d = roster;
     var mon = parseInt(d.month.split('-')[1], 10);
     document.getElementById('meta').textContent = d.monthLabel + (d.me ? '（' + d.me + ' さんのシフト）' : '');
-    var mine = document.getElementById('mine');
-    if (!d.me) {
-      mine.innerHTML = '<div class="note">スタッフ登録が見つかりませんでした。全体のシフト表は下で見られます。</div>';
-      document.getElementById('icsBtn').style.display = 'none';
-    } else {
-      var days = d.rows.filter(function (r) { return r.cells[d.me]; });
-      if (!days.length) {
-        mine.innerHTML = '<div class="note">今月の出勤日はありません。</div>';
-        document.getElementById('icsBtn').style.display = 'none';
-      } else {
-        mine.innerHTML = days.map(function (r) {
-          var cls = r.wd === '日' ? 'sun' : (r.wd === '土' ? 'sat' : '');
-          return '<div class="myday"><span class="' + cls + '">' + mon + '/' + r.day + '（' + r.wd + '）</span><span class="t">' + esc(r.cells[d.me].replace('-', '〜')) + '</span></div>';
-        }).join('') + '<div class="note">出勤日数：' + days.length + '日</div>';
-      }
-    }
+    var myDays = d.me ? d.rows.filter(function (r) { return r.cells[d.me]; }) : [];
+    document.getElementById('icsBtn').style.display = myDays.length ? 'block' : 'none';
     var cols = (onlyMe && d.me) ? [d.me] : d.columns;
     document.getElementById('viewToggle').style.display = d.me ? 'block' : 'none';
     document.getElementById('viewToggle').textContent = onlyMe ? '全員表示' : '自分だけ表示';
