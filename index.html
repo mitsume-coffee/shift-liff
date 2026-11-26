@@ -52,6 +52,7 @@
   #saveBtn:disabled { background: #b9b0a6; }
   #status { text-align: center; font-size: 12.5px; color: #8a7461; margin-top: 7px; min-height: 16px; }
   .notice { background: #fff3cd; border: 1px solid #e6cf8a; color: #6b5510; border-radius: 12px; padding: 12px; font-size: 14px; line-height: 1.6; margin-bottom: 12px; display: none; }
+   .guide { font-size: 12.5px; color: #6b6252; line-height: 1.7; margin: 0 2px 12px; }
   #loading { text-align: center; padding: 40px 0; color: #836312; font-size: 14px; }
   .hidden { display: none !important; }
 </style>
@@ -85,8 +86,9 @@
       </div>
     </div>
 
-    <div id="days"></div>
+    <div class="guide">何も押していない日は「未定」になります。微妙な日は、押さずに未定のままで大丈夫です。絶対に出られない日は「休み」を押してください。</div>
 
+   <div id="days"></div>
     <div class="memo">
       <div class="t">メモ（任意）例：テスト期間なので◯日は早めに上がりたいです、など</div>
       <textarea id="memo" placeholder="伝えたいことがあれば書いてください"></textarea>
@@ -248,7 +250,7 @@
       stateEl.classList.add('set');
     } else {
       times.classList.remove('show');
-      stateEl.textContent = '未入力';
+      stateEl.textContent = '未定';
       stateEl.classList.remove('set');
     }
   }
@@ -278,13 +280,17 @@
       if (state.days[date]) { days[date] = state.days[date]; count++; }
     });
     if (count === 0) { $('status').textContent = '1日も入力されていません。'; return; }
+      var undecided = 0;
+       Object.keys(state.days).forEach(function (date) {
+              if (!state.closed[date] && !state.days[date]) undecided++;
+       });
     $('saveBtn').disabled = true;
     $('status').textContent = '送信中…';
     try {
       var idToken = liff.getIDToken();
       var profile = await liff.getProfile().catch(function () { return { displayName: '' }; });
       var res = await api('saveSubmission', { idToken: idToken, name: profile.displayName || '', payload: JSON.stringify({ month: state.month, days: days, memo: $('memo').value }) });
-      $('status').textContent = '提出しました（' + res.updatedAt + '）。締切までは変更できます。';
+      $('status').textContent = '提出しました（' + res.updatedAt + '）。締切までは変更できます。' + (undecided ? '未定の日が' + undecided + '日あります。' : '');
       $('lastSaved').textContent = '前回の提出：' + res.updatedAt;
     } catch (e) {
       $('status').textContent = '送信に失敗しました：' + (e && e.message ? e.message : e);
