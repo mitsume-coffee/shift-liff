@@ -122,7 +122,6 @@
   <section id="viewEdit" class="view">
     <button class="back-btn" data-back>← もどる</button>
     <div class="date" id="editTitle"></div>
-    <p id="editRaw" style="font-size:13px;color:var(--muted);margin:0 2px 12px;"></p>
     <div class="msg" id="editMsg"></div>
     <div class="field"><label>出社</label><input type="time" id="editIn"></div>
     <div class="field"><label>退社</label><input type="time" id="editOut"></div>
@@ -233,12 +232,13 @@ function render(){
       b.textContent = d.label + '　出社 ' + d.inTime + ' のまま（タップで修正）';
       b.addEventListener('click', function(){ openEdit(d); });
       warn.appendChild(b);
-});
-          warn.style.display = 'block';
+    });
+    warn.style.display = 'block';
   } else {
     warn.style.display = 'none';
   }
 }
+
 function getPosition(){
   return new Promise(function(resolve, reject){
     if (!navigator.geolocation) { reject(new Error('この端末では位置情報が使えません')); return; }
@@ -323,14 +323,6 @@ async function loadList(ym){
     cells.forEach(function(c, idx){
       const td = document.createElement('td');
       td.textContent = c;
-      const raw = idx === 1 ? d.rawIn : (idx === 2 ? d.rawOut : '');
-      const eff = idx === 1 ? d.inTime : (idx === 2 ? d.outTime : '');
-      if (raw && eff && raw !== eff) {
-        const sub = document.createElement('div');
-        sub.style.cssText = 'font-size:11px;color:var(--muted)';
-        sub.textContent = '打刻 ' + raw;
-        td.appendChild(sub);
-      }
       tr.appendChild(td);
     });
     tr.addEventListener('click', function(){ openEdit(d); });
@@ -362,12 +354,6 @@ function openEdit(d){
   document.getElementById('editOut').value = d.outTime || '';
   document.getElementById('editBreak').value = String(d.breakMin || 0);
   document.getElementById('editLeave').value = d.leave || '';
-  const rawEl = document.getElementById('editRaw');
-  if (d.rawIn || d.rawOut) {
-    rawEl.textContent = '打刻した時刻：' + (d.rawIn ? '出社 ' + d.rawIn : '') + (d.rawIn && d.rawOut ? ' / ' : '') + (d.rawOut ? '退社 ' + d.rawOut : '');
-  } else {
-    rawEl.textContent = '';
-  }
   const del = document.getElementById('btnDelete');
   del.classList.remove('armed'); del.textContent = 'この日の記録を削除';
   showEditMsg('');
