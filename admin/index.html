@@ -91,6 +91,13 @@
   .blocked .big{font-size:44px;}
   .blocked p{color:var(--muted); line-height:1.7; font-size:14px;}
   .loading{text-align:center; color:var(--muted); padding:40px 0; font-size:14px;}
+  .spinner{display:inline-block; width:18px; height:18px; border:3px solid #dcdcd2; border-top-color:var(--olive);
+           border-radius:50%; animation:spin .8s linear infinite; vertical-align:-4px;}
+  .spinner.big{width:34px; height:34px; border-width:4px;}
+  .spinner.ondark{border-color:rgba(255,255,255,.35); border-top-color:#fff; margin-right:8px;}
+  .loading .spinner{display:block; margin:0 auto 12px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .tc-nav button:disabled{opacity:.4;}
 </style>
 </head>
 <body>
@@ -103,7 +110,7 @@
 <main>
   <div class="msg" id="msg"></div>
 
-  <div id="viewLoading" class="loading">読み込み中…</div>
+  <div id="viewLoading" class="loading"><span class="spinner big"></span>読み込み中…</div>
 
   <div id="viewBlocked" class="blocked hidden">
     <div class="big">🔒</div>
@@ -141,9 +148,9 @@
     <section id="secTimecard" class="hidden">
       <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
       <div class="tc-nav">
-        <button type="button" onclick="shiftTcMonth(-1)">◀</button>
+        <button type="button" id="tcPrev" onclick="shiftTcMonth(-1)">◀</button>
         <div class="tc-title" id="tcTitle">タイムカード</div>
-        <button type="button" onclick="shiftTcMonth(1)">▶</button>
+        <button type="button" id="tcNext" onclick="shiftTcMonth(1)">▶</button>
       </div>
       <div id="tcList"><div class="loading">読み込み中…</div></div>
       <p class="note">全員分の打刻記録です。出社・退社は修正後の時刻（給与計算に使う方）で、実際に押した時刻と違う日は「打刻」の時刻も小さく出ます。</p>
@@ -156,6 +163,7 @@
       <div id="storeGroups"></div>
       <div class="card hidden" id="storeFormCard">
         <div class="emp-name" id="storeFormTitle"></div>
+        <div id="storeLoading" class="loading hidden"><span class="spinner"></span>読み込み中…</div>
         <label class="flabel">店名</label>
         <input type="text" id="setShopName">
         <label class="flabel">定休日（曜日）</label>
@@ -355,7 +363,7 @@ function showView(view){
 function setSaving(on, btnId, label){
   state.saving = on;
   document.querySelectorAll('.btn-save, .btn-back, .btn-danger, .btn-add').forEach(function(b){ b.disabled = on; });
-  if (btnId) { const b = $(btnId); if (b) b.textContent = on ? '保存中…' : label; }
+  if (btnId) { const b = $(btnId); if (b) b.innerHTML = on ? '<span class="spinner ondark"></span>保存中…' : esc(label); }
 }
 function backToMain(){
   $('viewEmpEdit').classList.add('hidden');
@@ -543,7 +551,7 @@ function cancelDeletePer(){
 async function doDeletePer(){
   if (state.saving || !state.editPeriod) return;
   state.saving = true;
-  $('btnDoDelPer').disabled = true; $('btnDoDelPer').textContent = '削除中…';
+  $('btnDoDelPer').disabled = true; $('btnDoDelPer').innerHTML = '<span class="spinner ondark"></span>削除中…';
   try {
     const data = await callApi('deletePeriod', { payload: JSON.stringify({ row: state.editPeriod.row }) });
     state.periods = data.periods || state.periods;
@@ -585,12 +593,18 @@ async function openStoreSettings(index){
     initMap();
     return;
   }
+  $('storeLoading').classList.remove('hidden');
+  $('btnSaveSettings').disabled = true;
   try {
     const data = await callApi('getStore', { payload: JSON.stringify({ storeId: s.storeId }) });
     state.storeSettings[s.storeId] = data.settings || {};
     fillStoreForm(state.storeSettings[s.storeId]);
     initMap();
   } catch (e) { showMsg('店舗設定の読み込みに失敗しました: ' + e.message); }
+  finally {
+    $('storeLoading').classList.add('hidden');
+    $('btnSaveSettings').disabled = false;
+  }
 }
 function fillStoreForm(s){
   $('setShopName').value = s['店名'] || '';
@@ -638,7 +652,7 @@ function cancelAddStore(){
 async function doAddStore(){
   if (state.saving) return;
   state.saving = true;
-  $('btnDoAddStore').disabled = true; $('btnDoAddStore').textContent = '作成中…';
+  $('btnDoAddStore').disabled = true; $('btnDoAddStore').innerHTML = '<span class="spinner ondark"></span>作成中…';
   try {
     const data = await callApi('addStore', { payload: JSON.stringify({ name: $('newStoreName').value.trim() }) });
     state.stores = data.stores || state.stores;
@@ -693,18 +707,24 @@ function tcDow(dateStr){
   return names[new Date(dateStr + 'T00:00:00+09:00').getDay()];
 }
 async function loadTimecard(){
+  if (state.tcLoading) return;
   if (!state.tcMonth) {
     const d = new Date();
     state.tcMonth = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
   }
+  state.tcLoading = true;
+  $('tcPrev').disabled = true; $('tcNext').disabled = true;
   $('tcTitle').textContent = state.tcMonth.replace('-', '年') + '月';
-  $('tcList').innerHTML = '<div class="loading">読み込み中…</div>';
+  $('tcList').innerHTML = '<div class="loading"><span class="spinner big"></span>読み込み中…</div>';
   try {
     const data = await callApi('getTimecard', { payload: JSON.stringify({ month: state.tcMonth }) });
     state.tcLoaded = true;
     renderTimecard(data);
   } catch (e) {
     $('tcList').innerHTML = '<div class="card">読み込みに失敗しました: ' + esc(e.message) + '</div>';
+  } finally {
+    state.tcLoading = false;
+    $('tcPrev').disabled = false; $('tcNext').disabled = false;
   }
 }
 function shiftTcMonth(delta){
