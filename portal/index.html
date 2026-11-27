@@ -31,7 +31,7 @@
 <div class="brand"><img src="Logo三ツ目2nd完成透過.png" alt="三ツ目珈琲"></div>
 <header>
   <h1>スタッフ用メニュー</h1>
-  <div class="sub">Mitsume Coffee</div>
+  <div class="sub" id="greeting">Mitsume Coffee</div>
 </header>
 <main>
   <a class="menu-btn blue" href="https://liff.line.me/2012734423-JWdExkSG">
@@ -57,7 +57,8 @@
   <p class="note">このページはグループの固定メッセージから開けます。<br>アプリが増えたらここにボタンが増えます。</p>
 </main>
 <script>
-  // 管理ボタンは、開いた人が管理者のときだけ有効になる。
+  // 開いた人の名前（LINEプロフィール）であいさつを表示する。
+  // 管理ボタンは、開いた人が管理者（従業員マスターのロール=admin）のときだけ有効になる。
   // 判定は管理API（サーバ側）で行い、失敗・対象外ならグレイアウトのまま。
   const PORTAL_LIFF_ID = '2012734423-1btygsyk';
   const ADMIN_API_URL = 'https://script.google.com/macros/s/AKfycbxOrvoupXydB5FA3B2M3gOLZmZRtF8wQFVMdrNEZRzue3EgJnCMppdJUyXIqJGnCxfx/exec';
@@ -76,15 +77,30 @@
     });
   }
 
+  function greetingWord(){
+    const h = new Date().getHours();
+    if (h >= 5 && h < 11) return 'おはよー';
+    if (h >= 11 && h < 17) return 'こんにちは';
+    return 'こんばんは';
+  }
+
   (async function(){
     const btn = document.getElementById('adminBtn');
     const desc = document.getElementById('adminBtnDesc');
+    const greet = document.getElementById('greeting');
     try {
       await liff.init({ liffId: PORTAL_LIFF_ID });
       if (!liff.isLoggedIn()) { desc.textContent = '店主・管理者用'; return; }
       const idToken = liff.getIDToken() || '';
+      // 名前取得と管理者判定は同時に走らせる（判定を名前待ちで遅らせない）
+      const profileP = liff.getProfile().catch(function(){ return null; });
+      const adminP = idToken ? callCheckAdmin(idToken) : Promise.resolve(null);
+      const profile = await profileP;
+      if (profile && profile.displayName) {
+        greet.textContent = profile.displayName + 'さん、' + greetingWord() + '。';
+      }
       if (!idToken) { desc.textContent = '店主・管理者用'; return; }
-      const data = await callCheckAdmin(idToken);
+      const data = await adminP;
       if (data && data.admin) {
         btn.classList.remove('disabled');
         desc.textContent = '店主・管理者用（従業員マスター・期間・店舗設定）';
