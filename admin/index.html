@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>管理画面 | Mitsume Coffee</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root{
     --green:#0A5A0B; --yellow:#FFED00; --olive:#836312;
@@ -26,7 +28,15 @@
   .msg.ok{display:block; background:#eef7ee; border:1px solid var(--green); color:var(--green);}
   .tabs{display:flex; gap:8px; margin-bottom:14px;}
   .tab{flex:1; padding:11px 0; border-radius:10px; border:2px solid var(--olive); background:#fff;
-       color:var(--olive); font-size:15px; font-weight:700; cursor:pointer;}
+       color:var(--olive); font-size:14px; font-weight:700; cursor:pointer;}
+  .tc-nav{display:flex; align-items:center; gap:10px; margin-bottom:12px;}
+  .tc-nav button{flex:0 0 auto; width:44px; height:40px; border-radius:10px; border:1px solid var(--line); background:#fff; font-size:17px; cursor:pointer;}
+  .tc-nav .tc-title{flex:1; text-align:center; font-size:16px; font-weight:800;}
+  .tc-table{width:100%; border-collapse:collapse; font-size:13px;}
+  .tc-table th,.tc-table td{padding:6px 4px; border-bottom:1px solid var(--line); text-align:center; white-space:nowrap;}
+  .tc-table th{color:var(--muted); font-size:12px;}
+  .tc-table td.raw{font-size:11px; color:var(--muted);}
+  .tc-open{color:#a00; font-weight:800;}
   .tab.active{background:var(--olive); color:#fff;}
   .card{background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px;}
   .row-item{display:flex; align-items:center; gap:10px; cursor:pointer;}
@@ -45,6 +55,19 @@
   .btn-save{background:var(--green); color:#fff; margin-top:16px;}
   .btn-back{background:#fff; border:1px solid var(--line); color:var(--muted); margin-top:10px;}
   .btn:active{opacity:.75;}
+  .btn:disabled{opacity:.45; cursor:default;}
+  .btn-danger{background:#fff; border:2px solid #d33; color:#a00; margin-top:22px;}
+  .confirm-box{display:none; border:2px solid #d33; background:#fdecec; border-radius:12px; padding:12px; margin-top:22px;}
+  .confirm-box.show{display:block;}
+  .confirm-box p{margin:0 0 10px; font-size:14px; line-height:1.6; color:#a00; font-weight:700;}
+  .confirm-box .row{display:flex; gap:10px;}
+  .confirm-box button{flex:1; padding:12px 0; border-radius:10px; font-size:15px; font-weight:800; cursor:pointer;}
+  .confirm-box .do-del{background:#d33; color:#fff; border:none;}
+  .confirm-box .cancel-del{background:#fff; color:#555; border:1px solid var(--line);}
+  #setMap{height:260px; border-radius:10px; border:1px solid var(--line); margin-top:8px; z-index:0;}
+  .hol-row{display:flex; gap:8px; align-items:center; margin-bottom:8px;}
+  .hol-row input{flex:1;}
+  .hol-del{flex:0 0 auto; padding:10px 14px; border-radius:10px; border:1px solid #d33; color:#a00; background:#fff; font-size:14px; font-weight:700; cursor:pointer;}
   label.flabel{display:block; font-size:13px; font-weight:700; color:var(--muted); margin:14px 0 6px;}
   input[type=text],input[type=number],input[type=date],input[type=datetime-local],select{
     width:100%; padding:11px 12px; font-size:16px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--ink);}
@@ -85,6 +108,7 @@
     <div class="tabs">
       <button class="tab active" id="tabEmp" onclick="showTab('emp')">従業員</button>
       <button class="tab" id="tabPeriod" onclick="showTab('period')">期間</button>
+      <button class="tab" id="tabTimecard" onclick="showTab('timecard')">タイムカード</button>
       <button class="tab" id="tabSetting" onclick="showTab('setting')">店舗設定</button>
     </div>
 
@@ -102,6 +126,17 @@
       <p class="note">期間マスターが、シフト提出の受付判定とシフト照会の ◀ ▶ 移動を決めます。</p>
     </section>
 
+    <!-- タイムカード（全員分） -->
+    <section id="secTimecard" class="hidden">
+      <div class="tc-nav">
+        <button type="button" onclick="shiftTcMonth(-1)">◀</button>
+        <div class="tc-title" id="tcTitle">タイムカード</div>
+        <button type="button" onclick="shiftTcMonth(1)">▶</button>
+      </div>
+      <div id="tcList"><div class="loading">読み込み中…</div></div>
+      <p class="note">全員分の打刻記録です。出社・退社は修正後の時刻（給与計算に使う方）で、実際に押した時刻と違う日は「打刻」の時刻も小さく出ます。</p>
+    </section>
+
     <!-- 店舗設定 -->
     <section id="secSetting" class="hidden">
       <div class="card">
@@ -115,10 +150,15 @@
           <div><label class="flabel">店舗緯度</label><input type="text" id="setLat" inputmode="decimal"></div>
           <div><label class="flabel">店舗経度</label><input type="text" id="setLng" inputmode="decimal"></div>
         </div>
+        <div id="setMap"></div>
+        <p class="note">地図をタップするか、ピンを動かすと緯度・経度が入ります（タイムカードのGPS判定の中心です）。</p>
         <label class="flabel">GPS判定半径（m）</label>
         <input type="number" id="setRadius" inputmode="numeric">
+        <label class="flabel">特別休日（定休日・年末休み以外のお休み）</label>
+        <div id="holidayList"></div>
+        <button class="btn btn-add" type="button" onclick="addHoliday('')">＋ 特別休日を追加</button>
         <p class="note" id="setFixed"></p>
-        <button class="btn btn-save" onclick="saveSettings()">設定を保存</button>
+        <button class="btn btn-save" id="btnSaveSettings" onclick="saveSettings()">設定を保存</button>
       </div>
     </section>
   </div>
@@ -163,7 +203,7 @@
         <div id="empCandList"></div>
       </div>
 
-      <button class="btn btn-save" onclick="saveEmp()">保存する</button>
+      <button class="btn btn-save" id="btnSaveEmp" onclick="saveEmp()">保存する</button>
       <button class="btn btn-back" onclick="backToMain()">← もどる</button>
     </div>
   </div>
@@ -171,22 +211,32 @@
   <!-- 期間 編集 -->
   <div id="viewPeriodEdit" class="hidden">
     <div class="card">
-      <label class="flabel">期間ID</label>
-      <input type="text" id="perPeriodId" placeholder="例：202701">
+      <label class="flabel">期間ID（自動で付きます）</label>
+      <input type="text" id="perPeriodId" readonly placeholder="保存時に自動で付きます">
       <div class="two">
         <div><label class="flabel">対象期間 開始日</label><input type="date" id="perStart"></div>
         <div><label class="flabel">対象期間 終了日</label><input type="date" id="perEnd"></div>
       </div>
-      <label class="flabel">ラベル</label>
+      <label class="flabel">ラベル（日付を入れると自動で入ります。手直しもできます）</label>
       <input type="text" id="perLabel" placeholder="例：1月1日～1月31日">
       <div class="two">
         <div><label class="flabel">受付開始日時</label><input type="datetime-local" id="perAcceptStart"></div>
         <div><label class="flabel">受付終了日時</label><input type="datetime-local" id="perAcceptEnd"></div>
       </div>
-      <label class="flabel">確定シフトのシート名</label>
-      <input type="text" id="perSheetName" placeholder="例：確定シフト_20270101">
-      <button class="btn btn-save" onclick="savePer()">保存する</button>
+      <label class="flabel">確定シフトのシート名（ラベルと連動します。手直しもできます）</label>
+      <input type="text" id="perSheetName" placeholder="例：確定シフト_1月1日～1月31日">
+      <button class="btn btn-save" id="btnSavePer" onclick="savePer()">保存する</button>
       <button class="btn btn-back" onclick="backToMain()">← もどる</button>
+      <div id="perDeleteZone">
+        <button class="btn btn-danger" id="btnDelPer" onclick="askDeletePer()">この期間を削除</button>
+        <div class="confirm-box" id="perConfirmBox">
+          <p>この期間を削除しますか？<br>期間マスターから行が消えます（確定シフトのシート自体は消えません）。</p>
+          <div class="row">
+            <button class="do-del" id="btnDoDelPer" onclick="doDeletePer()">削除する</button>
+            <button class="cancel-del" onclick="cancelDeletePer()">やめる</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </main>
@@ -196,7 +246,8 @@ const LIFF_ID = '2012734423-NsDIKn5t';
 const API_URL = 'https://script.google.com/macros/s/AKfycbxOrvoupXydB5FA3B2M3gOLZmZRtF8wQFVMdrNEZRzue3EgJnCMppdJUyXIqJGnCxfx/exec';
 
 const state = { idToken:'', name:'', admin:null, employees:[], periods:[], settings:{}, candidates:[],
-                tab:'emp', editEmp:null, editLineId:'', editPeriod:null };
+                tab:'emp', editEmp:null, editLineId:'', editPeriod:null, saving:false, map:null, marker:null,
+                tcMonth:'', tcLoaded:false };
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -255,10 +306,21 @@ function showTab(tab){
   state.tab = tab;
   $('tabEmp').classList.toggle('active', tab === 'emp');
   $('tabPeriod').classList.toggle('active', tab === 'period');
+  $('tabTimecard').classList.toggle('active', tab === 'timecard');
   $('tabSetting').classList.toggle('active', tab === 'setting');
   $('secEmp').classList.toggle('hidden', tab !== 'emp');
   $('secPeriod').classList.toggle('hidden', tab !== 'period');
+  $('secTimecard').classList.toggle('hidden', tab !== 'timecard');
   $('secSetting').classList.toggle('hidden', tab !== 'setting');
+  if (tab === 'setting') initMap();
+  if (tab === 'timecard' && !state.tcLoaded) loadTimecard();
+}
+
+/***** 保存中の二重押し防止 *****/
+function setSaving(on, btnId, label){
+  state.saving = on;
+  document.querySelectorAll('.btn-save, .btn-back, .btn-danger, .btn-add').forEach(function(b){ b.disabled = on; });
+  if (btnId) { const b = $(btnId); if (b) b.textContent = on ? '保存中…' : label; }
 }
 function backToMain(){
   $('viewEmpEdit').classList.add('hidden');
@@ -339,6 +401,7 @@ function pickCand(i){
 function unlinkEmp(){ state.editLineId = ''; renderLinkBox(); renderCandList(); }
 
 async function saveEmp(){
+  if (state.saving) return;
   const payload = {
     row: state.editEmp ? state.editEmp.row : 0,
     familyJ: $('empFamilyJ').value.trim(), firstJ: $('empFirstJ').value.trim(),
@@ -351,6 +414,7 @@ async function saveEmp(){
     lineId: state.editLineId
   };
   if (!payload.familyJ) { showMsg('姓を入れてください。'); return; }
+  setSaving(true, 'btnSaveEmp', '保存する');
   try {
     const data = await callApi('saveEmployee', { payload: JSON.stringify(payload) });
     state.employees = data.employees || state.employees;
@@ -359,6 +423,7 @@ async function saveEmp(){
     backToMain();
     showMsg('従業員を保存しました。', true);
   } catch (e) { showMsg('保存に失敗しました: ' + e.message); }
+  finally { setSaving(false, 'btnSaveEmp', '保存する'); }
 }
 
 /***** 期間 一覧・編集 *****/
@@ -368,27 +433,41 @@ function renderPeriodList(){
   box.innerHTML = state.periods.map(function(p, i){
     return '<div class="card row-item" onclick="openPeriodEdit(' + i + ')">' +
       '<div class="grow"><div class="emp-name">' + esc(p.label || p.periodId) + '</div>' +
-      '<div class="emp-sub">対象: ' + esc(p.start) + ' 〜 ' + esc(p.end) +
+      '<div class="emp-sub">期間ID: ' + esc(p.periodId) + '　対象: ' + esc(p.start) + ' 〜 ' + esc(p.end) +
       (p.acceptEnd ? '<br>受付終了: ' + esc(p.acceptEnd) : '') +
       (p.sheetName ? '<br>確定シート: ' + esc(p.sheetName) : '') + '</div></div><div class="chev">›</div></div>';
   }).join('');
 }
 function toLocalInput(s){ return s ? s.replace(' ', 'T') : ''; }
+function fmtMD(v){ const p = String(v || '').split('-'); return p.length === 3 ? Number(p[1]) + '月' + Number(p[2]) + '日' : ''; }
+function syncSheetFromLabel(){
+  const l = $('perLabel').value.trim();
+  $('perSheetName').value = l ? '確定シフト_' + l : '';
+}
+function syncLabelFromDates(){
+  const s = $('perStart').value, e = $('perEnd').value;
+  if (s && e) { $('perLabel').value = fmtMD(s) + '～' + fmtMD(e); syncSheetFromLabel(); }
+}
 function openPeriodEdit(index){
   const p = (index === null || index === undefined) ? null : state.periods[index];
   state.editPeriod = p;
   $('perPeriodId').value = p ? p.periodId : '';
+  $('perPeriodId').placeholder = p ? '' : '保存時に自動で付きます（開始日の年月）';
   $('perStart').value = p ? p.start : '';
   $('perEnd').value = p ? p.end : '';
   $('perLabel').value = p ? p.label : '';
   $('perAcceptStart').value = p ? toLocalInput(p.acceptStart) : '';
   $('perAcceptEnd').value = p ? toLocalInput(p.acceptEnd) : '';
   $('perSheetName').value = p ? p.sheetName : '';
+  $('perDeleteZone').classList.toggle('hidden', !p);
+  $('perConfirmBox').classList.remove('show');
+  $('btnDelPer').classList.remove('hidden');
   $('viewMain').classList.add('hidden');
   $('viewPeriodEdit').classList.remove('hidden');
   window.scrollTo(0, 0);
 }
 async function savePer(){
+  if (state.saving) return;
   const payload = {
     row: state.editPeriod ? state.editPeriod.row : 0,
     periodId: $('perPeriodId').value.trim(),
@@ -397,17 +476,76 @@ async function savePer(){
     acceptStart: $('perAcceptStart').value, acceptEnd: $('perAcceptEnd').value,
     sheetName: $('perSheetName').value.trim()
   };
-  if (!payload.periodId || !payload.start || !payload.end) { showMsg('期間IDと対象期間の開始日・終了日を入れてください。'); return; }
+  if (!payload.start || !payload.end) { showMsg('対象期間の開始日・終了日を入れてください。'); return; }
+  setSaving(true, 'btnSavePer', '保存する');
   try {
     const data = await callApi('savePeriod', { payload: JSON.stringify(payload) });
     state.periods = data.periods || state.periods;
     renderPeriodList();
     backToMain();
-    showMsg('期間を保存しました。', true);
+    showMsg('期間を保存しました。' + (data.savedId ? '（期間ID: ' + data.savedId + '）' : ''), true);
   } catch (e) { showMsg('保存に失敗しました: ' + e.message); }
+  finally { setSaving(false, 'btnSavePer', '保存する'); }
+}
+function askDeletePer(){
+  $('perConfirmBox').classList.add('show');
+  $('btnDelPer').classList.add('hidden');
+}
+function cancelDeletePer(){
+  $('perConfirmBox').classList.remove('show');
+  $('btnDelPer').classList.remove('hidden');
+}
+async function doDeletePer(){
+  if (state.saving || !state.editPeriod) return;
+  state.saving = true;
+  $('btnDoDelPer').disabled = true; $('btnDoDelPer').textContent = '削除中…';
+  try {
+    const data = await callApi('deletePeriod', { payload: JSON.stringify({ row: state.editPeriod.row }) });
+    state.periods = data.periods || state.periods;
+    renderPeriodList();
+    backToMain();
+    showMsg('期間を削除しました。', true);
+  } catch (e) { showMsg('削除に失敗しました: ' + e.message); }
+  finally {
+    state.saving = false;
+    $('btnDoDelPer').disabled = false; $('btnDoDelPer').textContent = '削除する';
+  }
 }
 
 /***** 店舗設定 *****/
+function initMap(){
+  if (typeof L === 'undefined') return;
+  if (state.map) { setTimeout(function(){ state.map.invalidateSize(); moveMarker(); }, 60); return; }
+  const lat = parseFloat($('setLat').value) || 35.60142;
+  const lng = parseFloat($('setLng').value) || 139.35262;
+  state.map = L.map('setMap').setView([lat, lng], 16);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(state.map);
+  state.marker = L.marker([lat, lng], { draggable: true }).addTo(state.map);
+  function apply(ll){ $('setLat').value = Number(ll.lat).toFixed(5); $('setLng').value = Number(ll.lng).toFixed(5); }
+  state.marker.on('dragend', function(){ apply(state.marker.getLatLng()); });
+  state.map.on('click', function(ev){ state.marker.setLatLng(ev.latlng); apply(ev.latlng); });
+  setTimeout(function(){ state.map.invalidateSize(); }, 120);
+}
+function moveMarker(){
+  if (!state.map || !state.marker) return;
+  const lat = parseFloat($('setLat').value), lng = parseFloat($('setLng').value);
+  if (isFinite(lat) && isFinite(lng)) { state.marker.setLatLng([lat, lng]); state.map.setView([lat, lng]); }
+}
+function addHoliday(d){
+  const row = document.createElement('div');
+  row.className = 'hol-row';
+  row.innerHTML = '<input type="date" class="hol-date" value="' + esc(d || '') + '">' +
+    '<button type="button" class="hol-del" onclick="this.parentNode.remove()">削除</button>';
+  $('holidayList').appendChild(row);
+}
+function renderHolidays(csv){
+  $('holidayList').innerHTML = '';
+  String(csv || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean).forEach(function(d){ addHoliday(d); });
+}
+function collectHolidays(){
+  const vals = Array.prototype.map.call(document.querySelectorAll('.hol-date'), function(i){ return i.value; }).filter(Boolean);
+  return Array.from(new Set(vals)).sort().join(',');
+}
 function fillSettings(){
   const s = state.settings;
   $('setShopName').value = s['店名'] || '';
@@ -416,25 +554,91 @@ function fillSettings(){
   $('setLat').value = s['店舗緯度'] || '';
   $('setLng').value = s['店舗経度'] || '';
   $('setRadius').value = s['GPS判定半径m'] || '';
+  renderHolidays(s['特別休日'] || '');
   $('setFixed').textContent = '顧客ID: ' + (s['顧客ID'] || '') + ' / 店舗ID: ' + (s['店舗ID'] || '') +
     ' / スキーマ版数: ' + (s['スキーマ版数'] || '') + '（この3つは導入時の項目なので、この画面では変えません）';
 }
 async function saveSettings(){
+  if (state.saving) return;
   const payload = { settings: {
     '店名': $('setShopName').value.trim(),
     '定休日（曜日）': $('setClosedDay').value.trim(),
     '年末休み開始': $('setYearEnd').value.trim(),
     '店舗緯度': $('setLat').value.trim(),
     '店舗経度': $('setLng').value.trim(),
-    'GPS判定半径m': $('setRadius').value.trim()
+    'GPS判定半径m': $('setRadius').value.trim(),
+    '特別休日': collectHolidays()
   } };
+  setSaving(true, 'btnSaveSettings', '設定を保存');
   try {
     const data = await callApi('saveSettings', { payload: JSON.stringify(payload) });
     state.settings = data.settings || state.settings;
     fillSettings();
     showMsg('設定を保存しました。', true);
   } catch (e) { showMsg('保存に失敗しました: ' + e.message); }
+  finally { setSaving(false, 'btnSaveSettings', '設定を保存'); }
 }
+
+/***** タイムカード（全員分） *****/
+function fmtHours(min){ return (Math.round(min / 6) / 10).toString().replace(/\.0$/, ''); }
+function tcDow(dateStr){
+  const names = ['日', '月', '火', '水', '木', '金', '土'];
+  return names[new Date(dateStr + 'T00:00:00+09:00').getDay()];
+}
+async function loadTimecard(){
+  if (!state.tcMonth) {
+    const d = new Date();
+    state.tcMonth = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+  }
+  $('tcTitle').textContent = state.tcMonth.replace('-', '年') + '月';
+  $('tcList').innerHTML = '<div class="loading">読み込み中…</div>';
+  try {
+    const data = await callApi('getTimecard', { payload: JSON.stringify({ month: state.tcMonth }) });
+    state.tcLoaded = true;
+    renderTimecard(data);
+  } catch (e) {
+    $('tcList').innerHTML = '<div class="card">読み込みに失敗しました: ' + esc(e.message) + '</div>';
+  }
+}
+function shiftTcMonth(delta){
+  if (!state.tcMonth) return;
+  const p = state.tcMonth.split('-');
+  const d = new Date(Number(p[0]), Number(p[1]) - 1 + delta, 1);
+  state.tcMonth = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+  loadTimecard();
+}
+function renderTimecard(data){
+  const box = $('tcList');
+  const people = data.people || [];
+  if (!people.length) { box.innerHTML = '<div class="card">この月の記録はありません。</div>'; return; }
+  box.innerHTML = people.map(function(p){
+    const rows = p.records.map(function(r){
+      const md = Number(r.date.slice(5, 7)) + '/' + Number(r.date.slice(8, 10)) + ' (' + tcDow(r.date) + ')';
+      const raw = [];
+      if (r.rawIn && r.rawIn !== r.inTime) raw.push('出' + r.rawIn);
+      if (r.rawOut && r.rawOut !== r.outTime) raw.push('退' + r.rawOut);
+      return '<tr>' +
+        '<td>' + md + '</td>' +
+        '<td>' + esc(r.inTime || (r.leave || '—')) + '</td>' +
+        '<td>' + (r.open ? '<span class="tc-open">未退社</span>' : esc(r.outTime || '—')) + '</td>' +
+        '<td>' + (r.inTime && r.outTime ? r.breakMin + '分' : '—') + '</td>' +
+        '<td>' + (r.workMin !== null && r.workMin !== undefined ? fmtHours(r.workMin) + 'h' : '—') + '</td>' +
+        '<td class="raw">' + (raw.length ? '打刻 ' + esc(raw.join(' ')) : '') + '</td>' +
+        '</tr>';
+    }).join('');
+    return '<div class="card"><div class="emp-name">' + esc(p.name) +
+      ' <span style="font-size:13px;color:var(--muted);font-weight:400;">合計 ' + fmtHours(p.totalMin) + ' 時間</span></div>' +
+      '<table class="tc-table"><tr><th>日</th><th>出社</th><th>退社</th><th>休憩</th><th>実働</th><th></th></tr>' +
+      rows + '</table></div>';
+  }).join('');
+}
+
+/***** 連動と地図のイベント *****/
+$('perStart').addEventListener('change', syncLabelFromDates);
+$('perEnd').addEventListener('change', syncLabelFromDates);
+$('perLabel').addEventListener('input', syncSheetFromLabel);
+$('setLat').addEventListener('change', moveMarker);
+$('setLng').addEventListener('change', moveMarker);
 
 init();
 </script>
