@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理画面 | Mitsume Coffee</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{
+    --green:#0A5A0B; --yellow:#FFED00; --olive:#836312;
+    --ink:#222; --muted:#777; --line:#e3e3da; --bg:#f7f7f2;
+    --wine:#6b2237;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{margin:0; font-family:-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+       background:var(--bg); color:var(--ink); padding-bottom:40px;}
+  header{background:#fff; border-bottom:3px solid var(--green); padding:10px 12px 8px; text-align:center;}
+  header a.logo{display:inline-block; line-height:0;}
+  header img{height:42px;}
+  header .shop{font-size:12px; color:var(--muted); margin-top:4px; letter-spacing:.15em;}
+  header h1{font-size:19px; margin:4px 0 2px; color:var(--wine);}
+  .who{font-size:13px; color:var(--muted); text-align:center; margin-top:6px;}
+  main{max-width:560px; margin:0 auto; padding:14px;}
+  .msg{display:none; border-radius:10px; padding:10px 12px; font-size:14px; margin-bottom:12px; line-height:1.5;}
+  .msg.err{display:block; background:#fdecec; border:1px solid #d33; color:#a00;}
+  .msg.ok{display:block; background:#eef7ee; border:1px solid var(--green); color:var(--green);}
+  .tabs{display:flex; gap:8px; margin-bottom:14px;}
+  .tab{flex:1; padding:11px 0; border-radius:10px; border:2px solid var(--olive); background:#fff;
+       color:var(--olive); font-size:15px; font-weight:700; cursor:pointer;}
+  .tab.active{background:var(--olive); color:#fff;}
+  .card{background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px;}
+  .row-item{display:flex; align-items:center; gap:10px; cursor:pointer;}
+  .row-item .grow{flex:1; min-width:0;}
+  .emp-name{font-size:17px; font-weight:700;}
+  .emp-sub{font-size:12px; color:var(--muted); margin-top:2px; line-height:1.5;}
+  .badge{display:inline-block; font-size:11px; font-weight:700; border-radius:999px; padding:2px 8px; margin-right:4px; vertical-align:1px;}
+  .badge.type{background:#eef3ee; color:var(--green); border:1px solid var(--green);}
+  .badge.line-ok{background:var(--yellow); color:#5a4a00; border:1px solid #d8c400;}
+  .badge.line-ng{background:#eee; color:#999; border:1px solid #ccc;}
+  .badge.retired{background:#fdecec; color:#a00; border:1px solid #d33;}
+  .badge.admin{background:var(--wine); color:#fff; border:1px solid var(--wine);}
+  .chev{color:#bbb; font-size:20px;}
+  .btn{display:block; width:100%; padding:14px 0; border:none; border-radius:12px; font-size:16px; font-weight:800; cursor:pointer;}
+  .btn-add{background:#fff; border:2px dashed var(--olive); color:var(--olive);}
+  .btn-save{background:var(--green); color:#fff; margin-top:16px;}
+  .btn-back{background:#fff; border:1px solid var(--line); color:var(--muted); margin-top:10px;}
+  .btn:active{opacity:.75;}
+  label.flabel{display:block; font-size:13px; font-weight:700; color:var(--muted); margin:14px 0 6px;}
+  input[type=text],input[type=number],input[type=date],input[type=datetime-local],select{
+    width:100%; padding:11px 12px; font-size:16px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--ink);}
+  .two{display:flex; gap:10px;} .two>div{flex:1;}
+  .note{font-size:12px; color:var(--muted); line-height:1.6; margin-top:8px;}
+  .cand{border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; cursor:pointer; background:#fff;}
+  .cand.sel{border:2px solid var(--green); background:#f2f8f2;}
+  .cand .cname{font-size:15px; font-weight:700;}
+  .cand .csub{font-size:12px; color:var(--muted); margin-top:2px;}
+  .linkbox{background:#fbfbf7; border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.6;}
+  .mini-btn{display:inline-block; padding:6px 12px; border-radius:8px; border:1px solid #d33; color:#a00; background:#fff; font-size:13px; font-weight:700; cursor:pointer; margin-top:6px;}
+  .hidden{display:none !important;}
+  .blocked{text-align:center; padding:40px 20px;}
+  .blocked .big{font-size:44px;}
+  .blocked p{color:var(--muted); line-height:1.7; font-size:14px;}
+  .loading{text-align:center; color:var(--muted); padding:40px 0; font-size:14px;}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="../portal/"><img src="../Logo三ツ目2nd完成透過.png" alt="Mitsume Coffee"></a>
+  <div class="shop">MITSUME COFFEE</div>
+  <h1>管理画面</h1>
+</header>
+
+<main>
+  <div class="msg" id="msg"></div>
+
+  <div id="viewLoading" class="loading">読み込み中…</div>
+
+  <div id="viewBlocked" class="blocked hidden">
+    <div class="big">🔒</div>
+    <p>この画面は管理者だけが使えます。<br>管理者として登録されたLINEアカウントで開いてください。</p>
+  </div>
+
+  <div id="viewMain" class="hidden">
+    <div class="who" id="who"></div>
+    <div class="tabs">
+      <button class="tab active" id="tabEmp" onclick="showTab('emp')">従業員</button>
+      <button class="tab" id="tabPeriod" onclick="showTab('period')">期間</button>
+      <button class="tab" id="tabSetting" onclick="showTab('setting')">店舗設定</button>
+    </div>
+
+    <!-- 従業員 -->
+    <section id="secEmp">
+      <div id="empList"></div>
+      <button class="btn btn-add" onclick="openEmpEdit(null)">＋ 従業員を追加</button>
+      <p class="note">LINEの紐付けは手入力しません。各アプリを開いたことがある人が「候補」に出るので、編集画面でタップして紐付けます。</p>
+    </section>
+
+    <!-- 期間 -->
+    <section id="secPeriod" class="hidden">
+      <div id="periodList"></div>
+      <button class="btn btn-add" onclick="openPeriodEdit(null)">＋ 期間を追加</button>
+      <p class="note">期間マスターが、シフト提出の受付判定とシフト照会の ◀ ▶ 移動を決めます。</p>
+    </section>
+
+    <!-- 店舗設定 -->
+    <section id="secSetting" class="hidden">
+      <div class="card">
+        <label class="flabel">店名</label>
+        <input type="text" id="setShopName">
+        <div class="two">
+          <div><label class="flabel">定休日（曜日）</label><input type="text" id="setClosedDay" placeholder="例：水"></div>
+          <div><label class="flabel">年末休み開始</label><input type="text" id="setYearEnd" placeholder="例：12/29"></div>
+        </div>
+        <div class="two">
+          <div><label class="flabel">店舗緯度</label><input type="text" id="setLat" inputmode="decimal"></div>
+          <div><label class="flabel">店舗経度</label><input type="text" id="setLng" inputmode="decimal"></div>
+        </div>
+        <label class="flabel">GPS判定半径（m）</label>
+        <input type="number" id="setRadius" inputmode="numeric">
+        <p class="note" id="setFixed"></p>
+        <button class="btn btn-save" onclick="saveSettings()">設定を保存</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 従業員 編集 -->
+  <div id="viewEmpEdit" class="hidden">
+    <div class="card">
+      <div class="two">
+        <div><label class="flabel">姓</label><input type="text" id="empFamilyJ"></div>
+        <div><label class="flabel">名</label><input type="text" id="empFirstJ"></div>
+      </div>
+      <div class="two">
+        <div><label class="flabel">姓（ローマ字・任意）</label><input type="text" id="empFamilyE"></div>
+        <div><label class="flabel">名（ローマ字・任意）</label><input type="text" id="empFirstE"></div>
+      </div>
+      <div class="two">
+        <div><label class="flabel">並び順</label><input type="number" id="empDispOrder" inputmode="numeric"></div>
+        <div><label class="flabel">種別</label>
+          <select id="empType">
+            <option value="Parttime">パート・アルバイト</option>
+            <option value="FullTime">社員</option>
+            <option value="">（未設定）</option>
+          </select>
+        </div>
+      </div>
+      <label class="flabel">ロール</label>
+      <select id="empRoll">
+        <option value="">一般スタッフ</option>
+        <option value="admin">管理者（管理画面を使える）</option>
+      </select>
+      <label class="flabel">誕生日（任意）</label>
+      <input type="date" id="empBirthday">
+      <div class="two">
+        <div><label class="flabel">入社日（任意）</label><input type="date" id="empEmploymentDate"></div>
+        <div><label class="flabel">退職日（任意）</label><input type="date" id="empTerminationDate"></div>
+      </div>
+
+      <label class="flabel">LINEアカウント</label>
+      <div class="linkbox" id="empLinkBox"></div>
+      <div id="empCandArea">
+        <p class="note">まだ紐付いていない人（各アプリを開いたことがある人）:</p>
+        <div id="empCandList"></div>
+      </div>
+
+      <button class="btn btn-save" onclick="saveEmp()">保存する</button>
+      <button class="btn btn-back" onclick="backToMain()">← もどる</button>
+    </div>
+  </div>
+
+  <!-- 期間 編集 -->
+  <div id="viewPeriodEdit" class="hidden">
+    <div class="card">
+      <label class="flabel">期間ID</label>
+      <input type="text" id="perPeriodId" placeholder="例：202701">
+      <div class="two">
+        <div><label class="flabel">対象期間 開始日</label><input type="date" id="perStart"></div>
+        <div><label class="flabel">対象期間 終了日</label><input type="date" id="perEnd"></div>
+      </div>
+      <label class="flabel">ラベル</label>
+      <input type="text" id="perLabel" placeholder="例：1月1日～1月31日">
+      <div class="two">
+        <div><label class="flabel">受付開始日時</label><input type="datetime-local" id="perAcceptStart"></div>
+        <div><label class="flabel">受付終了日時</label><input type="datetime-local" id="perAcceptEnd"></div>
+      </div>
+      <label class="flabel">確定シフトのシート名</label>
+      <input type="text" id="perSheetName" placeholder="例：確定シフト_20270101">
+      <button class="btn btn-save" onclick="savePer()">保存する</button>
+      <button class="btn btn-back" onclick="backToMain()">← もどる</button>
+    </div>
+  </div>
+</main>
+
+<script>
+const LIFF_ID = '2012734423-NsDIKn5t';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxOrvoupXydB5FA3B2M3gOLZmZRtF8wQFVMdrNEZRzue3EgJnCMppdJUyXIqJGnCxfx/exec';
+
+const state = { idToken:'', name:'', admin:null, employees:[], periods:[], settings:{}, candidates:[],
+                tab:'emp', editEmp:null, editLineId:'', editPeriod:null };
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function showMsg(text, ok){
+  const m = $('msg');
+  m.textContent = text || '';
+  m.className = 'msg' + (text ? (ok ? ' ok' : ' err') : '');
+  if (text) window.scrollTo(0, 0);
+}
+
+function callApi(action, params){
+  return new Promise(function(resolve, reject){
+    const cb = 'cb_' + Math.random().toString(36).slice(2);
+    const q = Object.assign({ api:'1', action:action, callback:cb, idToken:state.idToken, name:state.name }, params || {});
+    const url = API_URL + '?' + Object.keys(q).map(function(k){ return k + '=' + encodeURIComponent(q[k]); }).join('&');
+    const timer = setTimeout(function(){ cleanup(); reject(new Error('通信がタイムアウトしました。もう一度お試しください。')); }, 25000);
+    function cleanup(){ delete window[cb]; if (s.parentNode) s.parentNode.removeChild(s); }
+    window[cb] = function(res){ clearTimeout(timer); cleanup();
+      if (res && res.ok) resolve(res.data); else reject(new Error((res && res.error) || '通信に失敗しました')); };
+    const s = document.createElement('script');
+    s.src = url;
+    s.onerror = function(){ clearTimeout(timer); cleanup(); reject(new Error('通信に失敗しました')); };
+    document.body.appendChild(s);
+  });
+}
+
+/***** 初期化 *****/
+async function init(){
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
+    state.idToken = liff.getIDToken() || '';
+    const profile = await liff.getProfile().catch(function(){ return null; });
+    state.name = (profile && profile.displayName) || '';
+    const data = await callApi('getAdmin');
+    state.admin = data.admin; state.employees = data.employees || [];
+    state.periods = data.periods || []; state.settings = data.settings || {};
+    state.candidates = data.candidates || [];
+    $('viewLoading').classList.add('hidden');
+    $('viewMain').classList.remove('hidden');
+    $('who').textContent = state.admin.name + ' さん（' + state.admin.role + '）';
+    renderEmpList(); renderPeriodList(); fillSettings();
+  } catch (e) {
+    $('viewLoading').classList.add('hidden');
+    if (String(e.message || '').indexOf('管理者として登録されていません') >= 0) {
+      $('viewBlocked').classList.remove('hidden');
+    } else {
+      showMsg('読み込みに失敗しました: ' + e.message);
+    }
+  }
+}
+
+/***** タブ *****/
+function showTab(tab){
+  state.tab = tab;
+  $('tabEmp').classList.toggle('active', tab === 'emp');
+  $('tabPeriod').classList.toggle('active', tab === 'period');
+  $('tabSetting').classList.toggle('active', tab === 'setting');
+  $('secEmp').classList.toggle('hidden', tab !== 'emp');
+  $('secPeriod').classList.toggle('hidden', tab !== 'period');
+  $('secSetting').classList.toggle('hidden', tab !== 'setting');
+}
+function backToMain(){
+  $('viewEmpEdit').classList.add('hidden');
+  $('viewPeriodEdit').classList.add('hidden');
+  $('viewMain').classList.remove('hidden');
+}
+
+/***** 従業員 一覧 *****/
+function typeLabel(t){ return t === 'FullTime' ? '社員' : (t === 'Parttime' ? 'パート' : '種別未設定'); }
+function renderEmpList(){
+  const box = $('empList');
+  if (!state.employees.length) { box.innerHTML = '<div class="card">まだ登録がありません。</div>'; return; }
+  box.innerHTML = state.employees.map(function(e, i){
+    const badges = '<span class="badge type">' + esc(typeLabel(e.type)) + '</span>' +
+      (e.roll === 'admin' ? '<span class="badge admin">管理者</span>' : '') +
+      (e.lineId ? '<span class="badge line-ok">LINE登録済</span>' : '<span class="badge line-ng">LINE未登録</span>') +
+      (e.terminationDate ? '<span class="badge retired">退職 ' + esc(e.terminationDate) + '</span>' : '');
+    const sub = (e.dispOrder !== '' ? '並び順 ' + e.dispOrder + '　' : '') + badges;
+    return '<div class="card row-item" onclick="openEmpEdit(' + i + ')">' +
+      '<div class="grow"><div class="emp-name">' + esc(e.familyJ + ' ' + e.firstJ) + '</div>' +
+      '<div class="emp-sub">' + sub + '</div></div><div class="chev">›</div></div>';
+  }).join('');
+}
+
+/***** 従業員 編集 *****/
+function openEmpEdit(index){
+  const e = (index === null || index === undefined) ? null : state.employees[index];
+  state.editEmp = e;
+  state.editLineId = e ? (e.lineId || '') : '';
+  $('empFamilyJ').value = e ? e.familyJ : '';
+  $('empFirstJ').value = e ? e.firstJ : '';
+  $('empFamilyE').value = e ? e.familyE : '';
+  $('empFirstE').value = e ? e.firstE : '';
+  $('empDispOrder').value = e && e.dispOrder !== '' ? e.dispOrder : '';
+  $('empType').value = e && e.type ? e.type : 'Parttime';
+  $('empRoll').value = e && e.roll ? e.roll : '';
+  $('empBirthday').value = e ? e.birthday : '';
+  $('empEmploymentDate').value = e ? e.employmentDate : '';
+  $('empTerminationDate').value = e ? e.terminationDate : '';
+  renderLinkBox(); renderCandList();
+  $('viewMain').classList.add('hidden');
+  $('viewEmpEdit').classList.remove('hidden');
+  window.scrollTo(0, 0);
+}
+function renderLinkBox(){
+  const box = $('empLinkBox');
+  if (state.editLineId) {
+    const cand = state.candidates.filter(function(c){ return c.userId === state.editLineId; })[0];
+    const emp = state.employees.filter(function(x){ return x.lineId === state.editLineId; })[0];
+    const label = emp ? (emp.familyJ + ' ' + emp.firstJ) : (cand ? cand.name : '');
+    box.innerHTML = '紐付け済み' + (label ? '（' + esc(label) + '）' : '') +
+      '<br><button class="mini-btn" onclick="unlinkEmp()">紐付けを解除</button>';
+    $('empCandArea').classList.add('hidden');
+  } else {
+    box.textContent = 'まだ紐付いていません。下の候補から選んでください。';
+    $('empCandArea').classList.remove('hidden');
+  }
+}
+function renderCandList(){
+  const box = $('empCandList');
+  const list = state.candidates.filter(function(c){
+    return !state.employees.some(function(e){ return e.lineId === c.userId; });
+  });
+  if (!list.length) { box.innerHTML = '<p class="note">候補はいません（アプリを開いたことがある未登録の人が出ます）。</p>'; return; }
+  box.innerHTML = list.map(function(c, i){
+    return '<div class="cand' + (state.editLineId === c.userId ? ' sel' : '') + '" onclick="pickCand(' + i + ')">' +
+      '<div class="cname">' + esc(c.name || '（名前なし）') + '</div>' +
+      '<div class="csub">' + esc(c.sources.join('・')) + (c.lastSeen ? '　最終: ' + esc(c.lastSeen) : '') + '</div></div>';
+  }).join('');
+  box._list = list;
+}
+function pickCand(i){
+  const c = $('empCandList')._list[i];
+  if (!c) return;
+  state.editLineId = c.userId;
+  renderLinkBox(); renderCandList();
+}
+function unlinkEmp(){ state.editLineId = ''; renderLinkBox(); renderCandList(); }
+
+async function saveEmp(){
+  const payload = {
+    row: state.editEmp ? state.editEmp.row : 0,
+    familyJ: $('empFamilyJ').value.trim(), firstJ: $('empFirstJ').value.trim(),
+    familyE: $('empFamilyE').value.trim(), firstE: $('empFirstE').value.trim(),
+    dispOrder: $('empDispOrder').value === '' ? '' : Number($('empDispOrder').value),
+    type: $('empType').value,
+    roll: $('empRoll').value,
+    birthday: $('empBirthday').value, employmentDate: $('empEmploymentDate').value,
+    terminationDate: $('empTerminationDate').value,
+    lineId: state.editLineId
+  };
+  if (!payload.familyJ) { showMsg('姓を入れてください。'); return; }
+  try {
+    const data = await callApi('saveEmployee', { payload: JSON.stringify(payload) });
+    state.employees = data.employees || state.employees;
+    state.candidates = data.candidates || state.candidates;
+    renderEmpList();
+    backToMain();
+    showMsg('従業員を保存しました。', true);
+  } catch (e) { showMsg('保存に失敗しました: ' + e.message); }
+}
+
+/***** 期間 一覧・編集 *****/
+function renderPeriodList(){
+  const box = $('periodList');
+  if (!state.periods.length) { box.innerHTML = '<div class="card">まだ期間がありません。</div>'; return; }
+  box.innerHTML = state.periods.map(function(p, i){
+    return '<div class="card row-item" onclick="openPeriodEdit(' + i + ')">' +
+      '<div class="grow"><div class="emp-name">' + esc(p.label || p.periodId) + '</div>' +
+      '<div class="emp-sub">対象: ' + esc(p.start) + ' 〜 ' + esc(p.end) +
+      (p.acceptEnd ? '<br>受付終了: ' + esc(p.acceptEnd) : '') +
+      (p.sheetName ? '<br>確定シート: ' + esc(p.sheetName) : '') + '</div></div><div class="chev">›</div></div>';
+  }).join('');
+}
+function toLocalInput(s){ return s ? s.replace(' ', 'T') : ''; }
+function openPeriodEdit(index){
+  const p = (index === null || index === undefined) ? null : state.periods[index];
+  state.editPeriod = p;
+  $('perPeriodId').value = p ? p.periodId : '';
+  $('perStart').value = p ? p.start : '';
+  $('perEnd').value = p ? p.end : '';
+  $('perLabel').value = p ? p.label : '';
+  $('perAcceptStart').value = p ? toLocalInput(p.acceptStart) : '';
+  $('perAcceptEnd').value = p ? toLocalInput(p.acceptEnd) : '';
+  $('perSheetName').value = p ? p.sheetName : '';
+  $('viewMain').classList.add('hidden');
+  $('viewPeriodEdit').classList.remove('hidden');
+  window.scrollTo(0, 0);
+}
+async function savePer(){
+  const payload = {
+    row: state.editPeriod ? state.editPeriod.row : 0,
+    periodId: $('perPeriodId').value.trim(),
+    start: $('perStart').value, end: $('perEnd').value,
+    label: $('perLabel').value.trim(),
+    acceptStart: $('perAcceptStart').value, acceptEnd: $('perAcceptEnd').value,
+    sheetName: $('perSheetName').value.trim()
+  };
+  if (!payload.periodId || !payload.start || !payload.end) { showMsg('期間IDと対象期間の開始日・終了日を入れてください。'); return; }
+  try {
+    const data = await callApi('savePeriod', { payload: JSON.stringify(payload) });
+    state.periods = data.periods || state.periods;
+    renderPeriodList();
+    backToMain();
+    showMsg('期間を保存しました。', true);
+  } catch (e) { showMsg('保存に失敗しました: ' + e.message); }
+}
+
+/***** 店舗設定 *****/
+function fillSettings(){
+  const s = state.settings;
+  $('setShopName').value = s['店名'] || '';
+  $('setClosedDay').value = s['定休日（曜日）'] || '';
+  $('setYearEnd').value = s['年末休み開始'] || '';
+  $('setLat').value = s['店舗緯度'] || '';
+  $('setLng').value = s['店舗経度'] || '';
+  $('setRadius').value = s['GPS判定半径m'] || '';
+  $('setFixed').textContent = '顧客ID: ' + (s['顧客ID'] || '') + ' / 店舗ID: ' + (s['店舗ID'] || '') +
+    ' / スキーマ版数: ' + (s['スキーマ版数'] || '') + '（この3つは導入時の項目なので、この画面では変えません）';
+}
+async function saveSettings(){
+  const payload = { settings: {
+    '店名': $('setShopName').value.trim(),
+    '定休日（曜日）': $('setClosedDay').value.trim(),
+    '年末休み開始': $('setYearEnd').value.trim(),
+    '店舗緯度': $('setLat').value.trim(),
+    '店舗経度': $('setLng').value.trim(),
+    'GPS判定半径m': $('setRadius').value.trim()
+  } };
+  try {
+    const data = await callApi('saveSettings', { payload: JSON.stringify(payload) });
+    state.settings = data.settings || state.settings;
+    fillSettings();
+    showMsg('設定を保存しました。', true);
+  } catch (e) { showMsg('保存に失敗しました: ' + e.message); }
+}
+
+init();
+</script>
+</body>
+</html>
