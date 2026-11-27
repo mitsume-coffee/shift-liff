@@ -24,6 +24,11 @@
   .msg{display:none; border-radius:10px; padding:10px 12px; font-size:14px; margin-bottom:12px;}
   .msg.err{display:block; background:#fdecec; color:#a11; border:1px solid #f2b8b8;}
   .msg.ok{display:block; background:#e9f7e9; color:var(--green); border:1px solid #bfe0bf;}
+  /* 未退社警告（デカデカと派手に） */
+  .open-warn{display:none; background:var(--yellow); border:4px solid #d33; border-radius:14px; padding:14px 12px; margin-bottom:14px; animation:warnpulse 1.2s ease-in-out infinite;}
+  @keyframes warnpulse{0%,100%{filter:brightness(1);}50%{filter:brightness(1.13);}}
+  .open-warn-head{font-size:23px; font-weight:900; color:#b3001b; text-align:center; letter-spacing:.02em; margin-bottom:10px;}
+  .open-warn-day{display:block; width:100%; background:#fff; border:2px solid #d33; color:#b3001b; border-radius:10px; padding:11px 8px; font-size:16px; font-weight:700; cursor:pointer; margin-top:8px;}
   .punch-area{display:flex; flex-direction:column; gap:14px;}
   .punch{border:none; border-radius:18px; padding:22px 16px 14px; cursor:pointer; text-align:center; width:100%;
     background:#fff; border:2px solid var(--line); color:var(--muted);}
@@ -78,6 +83,7 @@
     <div class="date" id="dateLabel"></div>
     <p class="greet" id="greet"></p>
     <div class="msg" id="msg"></div>
+    <div class="open-warn" id="openWarn"></div>
     <div class="punch-area">
       <div>
         <button class="punch" id="btnIn">
@@ -211,8 +217,28 @@ function render(){
   btnOut.className = 'punch' + (state.canOut ? ' active-out' : '');
   document.getElementById('inSub').textContent = rec.inTime ? rec.inTime : '';
   document.getElementById('outSub').textContent = rec.outTime ? (rec.outTime + '（休憩 ' + rec.breakMin + '分）') : '';
-}
 
+  /* 未退社の日があれば派手に警告（タップでその日の修正画面へ） */
+  const warn = document.getElementById('openWarn');
+  const open = state.openDays || [];
+  warn.innerHTML = '';
+  if (open.length) {
+    const head = document.createElement('div');
+    head.className = 'open-warn-head';
+    head.textContent = '⚠️ 未退社の日があります！';
+    warn.appendChild(head);
+    open.forEach(function(d){
+      const b = document.createElement('button');
+      b.className = 'open-warn-day';
+      b.textContent = d.label + '　出社 ' + d.inTime + ' のまま（タップで修正）';
+      b.addEventListener('click', function(){ openEdit(d); });
+      warn.appendChild(b);
+});
+          warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+  }
+}
 function getPosition(){
   return new Promise(function(resolve, reject){
     if (!navigator.geolocation) { reject(new Error('この端末では位置情報が使えません')); return; }
