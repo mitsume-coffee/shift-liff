@@ -88,17 +88,23 @@
     const btn = document.getElementById('adminBtn');
     const desc = document.getElementById('adminBtnDesc');
     const greet = document.getElementById('greeting');
+    let loggedIn = false;
     try {
       await liff.init({ liffId: PORTAL_LIFF_ID });
-      if (!liff.isLoggedIn()) {
-        // LIFFリンクから開かれていない（グループに貼ったURLを直接開いた等）と
-        // 本人確認ができず、あいさつも管理ボタンも効かない。LIFFリンクへ自動で寄せる。
-        if (liff.isInClient() && !/[?&]retry=1/.test(location.search)) {
-          location.replace('https://liff.line.me/' + PORTAL_LIFF_ID + '?retry=1');
-          return;
-        }
-        desc.textContent = '店主・管理者用'; return;
+      loggedIn = liff.isLoggedIn();
+    } catch (e) { loggedIn = false; }
+    if (!loggedIn) {
+      // LIFFリンクから開かれていない（グループに貼ったURLを直接開いた等）と
+      // 本人確認ができず、あいさつも管理ボタンも効かない。
+      // LINEアプリ内で開かれているなら、LIFFリンクへ自動で寄せる（1回だけ）。
+      const inLineApp = /Line\//i.test(navigator.userAgent);
+      if (inLineApp && !/[?&]retry=1/.test(location.search)) {
+        location.replace('https://liff.line.me/' + PORTAL_LIFF_ID + '?retry=1');
+        return;
       }
+      desc.textContent = '店主・管理者用'; return;
+    }
+    try {
       const idToken = liff.getIDToken() || '';
       // 名前取得と管理者判定は同時に走らせる（判定を名前待ちで遅らせない）
       const profileP = liff.getProfile().catch(function(){ return null; });
