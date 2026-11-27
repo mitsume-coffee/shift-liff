@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>スタッフ用メニュー | Mitsume Coffee</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif; background: #faf7f1; color: #333; }
@@ -20,6 +21,9 @@
   a.menu-btn.olive { background: #836312; }
   a.menu-btn.blue { background: #2b6cb0; }
   a.menu-btn.slate { background: #595959; }
+  a.menu-btn.wine { background: #6b2237; }
+  a.menu-btn.disabled { background: #c9c9c4; color: #8a8a84; pointer-events: none; }
+  a.menu-btn.disabled .d { opacity: .8; }
   .note { font-size: 12px; color: #8a8578; text-align: center; margin-top: 20px; line-height: 1.7; }
 </style>
 </head>
@@ -46,7 +50,51 @@
     <span class="t">シフト照会</span>
     <span class="d">確定したシフトを見る・カレンダーに入れる</span>
   </a>
+  <a class="menu-btn wine disabled" id="adminBtn" href="https://liff.line.me/2012734423-NsDIKn5t">
+    <span class="t">管理画面</span>
+    <span class="d" id="adminBtnDesc">店主・管理者用（確認中…）</span>
+  </a>
   <p class="note">このページはグループの固定メッセージから開けます。<br>アプリが増えたらここにボタンが増えます。</p>
 </main>
+<script>
+  // 管理ボタンは、開いた人が管理者のときだけ有効になる。
+  // 判定は管理API（サーバ側）で行い、失敗・対象外ならグレイアウトのまま。
+  const PORTAL_LIFF_ID = '2012734423-1btygsyk';
+  const ADMIN_API_URL = 'https://script.google.com/macros/s/AKfycbxOrvoupXydB5FA3B2M3gOLZmZRtF8wQFVMdrNEZRzue3EgJnCMppdJUyXIqJGnCxfx/exec';
+
+  function callCheckAdmin(idToken){
+    return new Promise(function(resolve){
+      const cb = 'cb_' + Math.random().toString(36).slice(2);
+      const url = ADMIN_API_URL + '?api=1&action=checkAdmin&callback=' + cb + '&idToken=' + encodeURIComponent(idToken);
+      const timer = setTimeout(function(){ cleanup(); resolve(null); }, 15000);
+      function cleanup(){ delete window[cb]; if (s.parentNode) s.parentNode.removeChild(s); }
+      window[cb] = function(res){ clearTimeout(timer); cleanup(); resolve(res && res.ok ? res.data : null); };
+      const s = document.createElement('script');
+      s.src = url;
+      s.onerror = function(){ clearTimeout(timer); cleanup(); resolve(null); };
+      document.body.appendChild(s);
+    });
+  }
+
+  (async function(){
+    const btn = document.getElementById('adminBtn');
+    const desc = document.getElementById('adminBtnDesc');
+    try {
+      await liff.init({ liffId: PORTAL_LIFF_ID });
+      if (!liff.isLoggedIn()) { desc.textContent = '店主・管理者用'; return; }
+      const idToken = liff.getIDToken() || '';
+      if (!idToken) { desc.textContent = '店主・管理者用'; return; }
+      const data = await callCheckAdmin(idToken);
+      if (data && data.admin) {
+        btn.classList.remove('disabled');
+        desc.textContent = '店主・管理者用（従業員マスター・期間・店舗設定）';
+      } else {
+        desc.textContent = '店主・管理者用';
+      }
+    } catch (e) {
+      desc.textContent = '店主・管理者用';
+    }
+  })();
+</script>
 </body>
 </html>
