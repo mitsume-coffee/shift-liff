@@ -127,18 +127,20 @@
       <div class="menu-btn green" onclick="showView('emp')"><span class="t">従業員</span><span class="d">従業員マスターの追加・編集（所属店舗・管理者）</span></div>
       <div class="menu-btn slate" onclick="showView('period')"><span class="t">期間</span><span class="d">シフト募集の期間（期間マスター）</span></div>
       <div class="menu-btn olive" onclick="showView('store')"><span class="t">店舗管理</span><span class="d">顧客・店舗ごとの設定、店舗の追加</span></div>
-      <div class="menu-btn purple" onclick="showView('ai')"><span class="t">AIに相談</span><span class="d">店長の希望をAIがシフトの制約に（準備中）</span></div>
+      <div class="menu-btn purple" onclick="showView('shift')"><span class="t">シフトを作る</span><span class="d">店舗を選んで、AIの案を直して確定（準備中）</span></div>
     </section>
 
-    <!-- AIに相談（準備中） -->
-    <section id="secAi" class="hidden">
+    <!-- シフトを作る（準備中） -->
+    <section id="secShift" class="hidden">
       <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
-      <div class="card" style="text-align:center; padding:28px 18px;">
-        <div style="font-size:34px;">💬</div>
-        <div class="emp-name" style="margin-top:6px;">AIに相談（準備中）</div>
+      <p class="note" style="text-align:left; margin:0 0 10px;">まず、シフトを作る店舗を選んでください。</p>
+      <div id="shiftStores"></div>
+      <div class="card hidden" id="shiftPlanCard" style="text-align:center; padding:28px 18px;">
+        <div style="font-size:34px;">🗓️</div>
+        <div class="emp-name" id="shiftPlanTitle" style="margin-top:6px;"></div>
         <p style="font-size:13px; color:var(--muted); line-height:1.8; margin-top:8px;">
-          店長の希望を普段の言葉で話すと、AIがシフトの制約に翻訳して、この店の共通マスターに覚える場所です。<br>
-          シフト案の自動作成（Phase 2）とあわせて実装予定です。
+          ここにAIが出したシフト案が出て、直したり確定したりできるようになります。<br>
+          店長の希望をAIに伝える「相談」も、この画面から行います。（Phase 2で実装予定）
         </p>
       </div>
     </section>
@@ -370,8 +372,9 @@ function showView(view){
   $('secPeriod').classList.toggle('hidden', view !== 'period');
   $('secTimecard').classList.toggle('hidden', view !== 'timecard');
   $('secStore').classList.toggle('hidden', view !== 'store');
-  $('secAi').classList.toggle('hidden', view !== 'ai');
+  $('secShift').classList.toggle('hidden', view !== 'shift');
   if (view === 'timecard' && !state.tcLoaded) loadTimecard();
+  if (view === 'shift') renderShiftStores();
   window.scrollTo(0, 0);
 }
 
@@ -588,6 +591,26 @@ function renderStoreHome(){
   renderStoreGroups();
   $('addStoreCard').classList.toggle('hidden', state.myScope !== 'all');
 }
+/***** シフトを作る: 店舗選択（準備中） *****/
+function renderShiftStores(){
+  const box = $('shiftStores');
+  if (!state.stores.length) { box.innerHTML = '<div class="card">店舗が登録されていません。</div>'; return; }
+  box.innerHTML = state.stores.map(function(s, i){
+    return '<div class="card row-item" onclick="pickShiftStore(' + i + ')">' +
+      '<div class="grow"><div class="emp-name">' + esc(s.name || s.storeId) + '</div>' +
+      '<div class="emp-sub">店舗ID: ' + esc(s.storeId) + (s.storeId === state.homeStoreId ? '（この管理画面の店）' : '') + '</div></div>' +
+      '<div class="chev">›</div></div>';
+  }).join('');
+}
+function pickShiftStore(index){
+  const s = state.stores[index];
+  if (!s) return;
+  state.shiftStore = s.storeId;
+  $('shiftPlanTitle').textContent = (s.name || s.storeId) + ' のシフト作成（準備中）';
+  $('shiftPlanCard').classList.remove('hidden');
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
 function renderStoreGroups(){
   const box = $('storeGroups');
   if (!state.stores.length) { box.innerHTML = '<div class="card">店舗が登録されていません。</div>'; return; }
