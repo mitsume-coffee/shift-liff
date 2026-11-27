@@ -5,6 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>スタッフ用メニュー | Mitsume Coffee</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+  // 直URLをLINEアプリ内で開いた可能性が高い場合、最初からロゴ画面を出しておく。
+  // （LIFF起動時は liff.state 等がURLに付くので、その場合は出さない）
+  (function(){
+    var isLine = /Line\//i.test(navigator.userAgent);
+    var hasState = /[?&](liff\.state|code|state)=/.test(location.search);
+    var retried = /[?&]retry=1/.test(location.search);
+    if (isLine && !hasState && !retried) {
+      document.documentElement.classList.add('splash-on');
+      window.__splashAt = Date.now();
+    }
+  })();
+</script>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif; background: #faf7f1; color: #333; }
@@ -27,9 +40,14 @@
   .note { font-size: 12px; color: #8a8578; text-align: center; margin-top: 20px; line-height: 1.7; }
   .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #d8d8ce; border-top-color: #8a8a84; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 5px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  #splash { display: none; position: fixed; inset: 0; background: #fff; z-index: 999; align-items: center; justify-content: center; }
+  html.splash-on #splash { display: flex; }
+  #splash img { width: 200px; max-width: 62vw; animation: splashIn .5s ease-out; }
+  @keyframes splashIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
 </style>
 </head>
 <body>
+<div id="splash"><img src="Logo三ツ目2nd完成透過.png" alt="三ツ目珈琲"></div>
 <div class="brand"><img src="Logo三ツ目2nd完成透過.png" alt="三ツ目珈琲"></div>
 <header>
   <h1>スタッフ用メニュー</h1>
@@ -98,14 +116,22 @@
     if (!loggedIn) {
       // LIFFリンクから開かれていない（グループに貼ったURLを直接開いた等）と
       // 本人確認ができず、あいさつも管理ボタンも効かない。
-      // LINEアプリ内で開かれているなら、LIFFリンクへ自動で寄せる（1回だけ）。
+      // LINEアプリ内で開かれているなら、ロゴ画面を少し見せてから
+      // LIFFリンクへ自動で寄せる（1回だけ）。
       const inLineApp = /Line\//i.test(navigator.userAgent);
       if (inLineApp && !/[?&]retry=1/.test(location.search)) {
-        location.replace('https://liff.line.me/' + PORTAL_LIFF_ID + '?retry=1');
+        document.documentElement.classList.add('splash-on');
+        const shownAt = window.__splashAt || Date.now();
+        const wait = Math.max(0, 1100 - (Date.now() - shownAt));
+        setTimeout(function(){
+          location.replace('https://liff.line.me/' + PORTAL_LIFF_ID + '?retry=1');
+        }, wait);
         return;
       }
+      document.documentElement.classList.remove('splash-on');
       desc.textContent = '店主・管理者用'; return;
     }
+    document.documentElement.classList.remove('splash-on');
     try {
       const idToken = liff.getIDToken() || '';
       // 名前取得と管理者判定は同時に走らせる（判定を名前待ちで遅らせない）
