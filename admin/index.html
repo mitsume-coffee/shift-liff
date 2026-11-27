@@ -38,6 +38,13 @@
   .tc-table td.raw{font-size:11px; color:var(--muted);}
   .tc-open{color:#a00; font-weight:800;}
   .tab.active{background:var(--olive); color:#fff;}
+  .menu-btn{display:block; border-radius:14px; padding:16px 18px; margin-bottom:12px; color:#fff; cursor:pointer;}
+  .menu-btn .t{display:block; font-size:18px; font-weight:700;}
+  .menu-btn .d{display:block; font-size:13px; opacity:.92; margin-top:4px;}
+  .menu-btn.green{background:var(--green);} .menu-btn.olive{background:var(--olive);}
+  .menu-btn.blue{background:#2b6cb0;} .menu-btn.slate{background:#595959;} .menu-btn.wine{background:var(--wine);}
+  .badge.scope{background:#f3e8ee; color:var(--wine); border:1px solid var(--wine);}
+  .btn-portal{background:#fff; border:1px solid var(--line); color:var(--muted); margin:0 0 12px;}
   .card{background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px;}
   .row-item{display:flex; align-items:center; gap:10px; cursor:pointer;}
   .row-item .grow{flex:1; min-width:0;}
@@ -105,15 +112,18 @@
 
   <div id="viewMain" class="hidden">
     <div class="who" id="who"></div>
-    <div class="tabs">
-      <button class="tab active" id="tabEmp" onclick="showTab('emp')">従業員</button>
-      <button class="tab" id="tabPeriod" onclick="showTab('period')">期間</button>
-      <button class="tab" id="tabTimecard" onclick="showTab('timecard')">タイムカード</button>
-      <button class="tab" id="tabSetting" onclick="showTab('setting')">店舗設定</button>
-    </div>
+
+    <!-- 管理ポータル -->
+    <section id="secPortal">
+      <div class="menu-btn blue" onclick="showView('timecard')"><span class="t">タイムカード</span><span class="d">全員分の打刻を見る</span></div>
+      <div class="menu-btn green" onclick="showView('emp')"><span class="t">従業員</span><span class="d">従業員マスターの追加・編集（所属店舗・管理者）</span></div>
+      <div class="menu-btn slate" onclick="showView('period')"><span class="t">期間</span><span class="d">シフト募集の期間（期間マスター）</span></div>
+      <div class="menu-btn olive" onclick="showView('store')"><span class="t">店舗管理</span><span class="d">顧客・店舗ごとの設定、店舗の追加</span></div>
+    </section>
 
     <!-- 従業員 -->
-    <section id="secEmp">
+    <section id="secEmp" class="hidden">
+      <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
       <div id="empList"></div>
       <button class="btn btn-add" onclick="openEmpEdit(null)">＋ 従業員を追加</button>
       <p class="note">LINEの紐付けは手入力しません。各アプリを開いたことがある人が「候補」に出るので、編集画面でタップして紐付けます。</p>
@@ -121,6 +131,7 @@
 
     <!-- 期間 -->
     <section id="secPeriod" class="hidden">
+      <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
       <div id="periodList"></div>
       <button class="btn btn-add" onclick="openPeriodEdit(null)">＋ 期間を追加</button>
       <p class="note">期間マスターが、シフト提出の受付判定とシフト照会の ◀ ▶ 移動を決めます。</p>
@@ -128,6 +139,7 @@
 
     <!-- タイムカード（全員分） -->
     <section id="secTimecard" class="hidden">
+      <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
       <div class="tc-nav">
         <button type="button" onclick="shiftTcMonth(-1)">◀</button>
         <div class="tc-title" id="tcTitle">タイムカード</div>
@@ -137,15 +149,17 @@
       <p class="note">全員分の打刻記録です。出社・退社は修正後の時刻（給与計算に使う方）で、実際に押した時刻と違う日は「打刻」の時刻も小さく出ます。</p>
     </section>
 
-    <!-- 店舗設定 -->
-    <section id="secSetting" class="hidden">
-      <div class="card">
+    <!-- 店舗管理 -->
+    <section id="secStore" class="hidden">
+      <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
+      <div class="card" id="storeCustomer"></div>
+      <div id="storeGroups"></div>
+      <div class="card hidden" id="storeFormCard">
+        <div class="emp-name" id="storeFormTitle"></div>
         <label class="flabel">店名</label>
         <input type="text" id="setShopName">
-        <div class="two">
-          <div><label class="flabel">定休日（曜日）</label><input type="text" id="setClosedDay" placeholder="例：水"></div>
-          <div><label class="flabel">年末休み開始</label><input type="text" id="setYearEnd" placeholder="例：12/29"></div>
-        </div>
+        <label class="flabel">定休日（曜日）</label>
+        <input type="text" id="setClosedDay" placeholder="例：水">
         <div class="two">
           <div><label class="flabel">店舗緯度</label><input type="text" id="setLat" inputmode="decimal"></div>
           <div><label class="flabel">店舗経度</label><input type="text" id="setLng" inputmode="decimal"></div>
@@ -154,11 +168,25 @@
         <p class="note">地図をタップするか、ピンを動かすと緯度・経度が入ります（タイムカードのGPS判定の中心です）。</p>
         <label class="flabel">GPS判定半径（m）</label>
         <input type="number" id="setRadius" inputmode="numeric">
-        <label class="flabel">特別休日（定休日・年末休み以外のお休み）</label>
+        <label class="flabel">特別休日（定休日以外のお休み。年末年始もここに入れます）</label>
         <div id="holidayList"></div>
         <button class="btn btn-add" type="button" onclick="addHoliday('')">＋ 特別休日を追加</button>
         <p class="note" id="setFixed"></p>
         <button class="btn btn-save" id="btnSaveSettings" onclick="saveSettings()">設定を保存</button>
+      </div>
+      <div class="card hidden" id="addStoreCard">
+        <div class="emp-name">店舗を追加</div>
+        <label class="flabel">新しい店舗の店名</label>
+        <input type="text" id="newStoreName" placeholder="例：○○店">
+        <p class="note">保存すると、店舗フォルダ（店長代理S00X）と、その店の共通マスターが自動で作られます。</p>
+        <button class="btn btn-add" id="btnAddStore" onclick="askAddStore()">＋ 店舗を追加</button>
+        <div class="confirm-box" id="storeConfirmBox">
+          <p>この店舗を追加しますか？<br>店舗フォルダと共通マスターが新規に作られます。</p>
+          <div class="row">
+            <button class="do-del" style="background:var(--green);" id="btnDoAddStore" onclick="doAddStore()">追加する</button>
+            <button class="cancel-del" onclick="cancelAddStore()">やめる</button>
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -189,6 +217,9 @@
         <option value="">一般スタッフ</option>
         <option value="admin">管理者（管理画面を使える）</option>
       </select>
+      <label class="flabel">所属店舗（管理者の権限の範囲）</label>
+      <select id="empBelong"></select>
+      <p class="note">管理者の場合：ブランク＝全社管理（全店舗OK）、店舗を選ぶとその店だけの店舗管理者になります。一般スタッフはブランクでOKです。</p>
       <label class="flabel">誕生日（任意）</label>
       <input type="date" id="empBirthday">
       <div class="two">
@@ -246,8 +277,10 @@ const LIFF_ID = '2012734423-NsDIKn5t';
 const API_URL = 'https://script.google.com/macros/s/AKfycbxOrvoupXydB5FA3B2M3gOLZmZRtF8wQFVMdrNEZRzue3EgJnCMppdJUyXIqJGnCxfx/exec';
 
 const state = { idToken:'', name:'', admin:null, employees:[], periods:[], settings:{}, candidates:[],
-                tab:'emp', editEmp:null, editLineId:'', editPeriod:null, saving:false, map:null, marker:null,
-                tcMonth:'', tcLoaded:false };
+                view:'portal', editEmp:null, editLineId:'', editPeriod:null, saving:false, map:null, marker:null,
+                tcMonth:'', tcLoaded:false,
+                stores:[], customerName:'', customerId:'', homeStoreId:'S001', myScope:'',
+                currentStore:'', storeSettings:{} };
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -287,10 +320,15 @@ async function init(){
     state.admin = data.admin; state.employees = data.employees || [];
     state.periods = data.periods || []; state.settings = data.settings || {};
     state.candidates = data.candidates || [];
+    state.stores = data.stores || []; state.customerName = data.customerName || '';
+    state.customerId = data.customerId || ''; state.homeStoreId = data.homeStoreId || 'S001';
+    state.myScope = (data.admin && data.admin.scope) || '';
+    if (state.homeStoreId) state.storeSettings[state.homeStoreId] = state.settings;
     $('viewLoading').classList.add('hidden');
     $('viewMain').classList.remove('hidden');
     $('who').textContent = state.admin.name + ' さん（' + state.admin.role + '）';
-    renderEmpList(); renderPeriodList(); fillSettings();
+    renderEmpList(); renderPeriodList(); renderStoreHome();
+    showView('portal');
   } catch (e) {
     $('viewLoading').classList.add('hidden');
     if (String(e.message || '').indexOf('管理者として登録されていません') >= 0) {
@@ -301,19 +339,16 @@ async function init(){
   }
 }
 
-/***** タブ *****/
-function showTab(tab){
-  state.tab = tab;
-  $('tabEmp').classList.toggle('active', tab === 'emp');
-  $('tabPeriod').classList.toggle('active', tab === 'period');
-  $('tabTimecard').classList.toggle('active', tab === 'timecard');
-  $('tabSetting').classList.toggle('active', tab === 'setting');
-  $('secEmp').classList.toggle('hidden', tab !== 'emp');
-  $('secPeriod').classList.toggle('hidden', tab !== 'period');
-  $('secTimecard').classList.toggle('hidden', tab !== 'timecard');
-  $('secSetting').classList.toggle('hidden', tab !== 'setting');
-  if (tab === 'setting') initMap();
-  if (tab === 'timecard' && !state.tcLoaded) loadTimecard();
+/***** 画面切り替え（管理ポータル ⇔ 各画面） *****/
+function showView(view){
+  state.view = view;
+  $('secPortal').classList.toggle('hidden', view !== 'portal');
+  $('secEmp').classList.toggle('hidden', view !== 'emp');
+  $('secPeriod').classList.toggle('hidden', view !== 'period');
+  $('secTimecard').classList.toggle('hidden', view !== 'timecard');
+  $('secStore').classList.toggle('hidden', view !== 'store');
+  if (view === 'timecard' && !state.tcLoaded) loadTimecard();
+  window.scrollTo(0, 0);
 }
 
 /***** 保存中の二重押し防止 *****/
@@ -335,10 +370,11 @@ function renderEmpList(){
   if (!state.employees.length) { box.innerHTML = '<div class="card">まだ登録がありません。</div>'; return; }
   box.innerHTML = state.employees.map(function(e, i){
     const badges = '<span class="badge type">' + esc(typeLabel(e.type)) + '</span>' +
-      (e.roll === 'admin' ? '<span class="badge admin">管理者</span>' : '') +
+      (e.roll === 'admin' ? '<span class="badge scope">' + (e.belongStore ? '店舗管理者（' + esc(e.belongStore) + '）' : '全社管理') + '</span>' : '') +
       (e.lineId ? '<span class="badge line-ok">LINE登録済</span>' : '<span class="badge line-ng">LINE未登録</span>') +
       (e.terminationDate ? '<span class="badge retired">退職 ' + esc(e.terminationDate) + '</span>' : '');
-    const sub = (e.dispOrder !== '' ? '並び順 ' + e.dispOrder + '　' : '') + badges;
+    const sub = (e.dispOrder !== '' ? '並び順 ' + e.dispOrder + '　' : '') +
+      (e.roll !== 'admin' && e.belongStore ? '所属: ' + esc(e.belongStore) + '　' : '') + badges;
     return '<div class="card row-item" onclick="openEmpEdit(' + i + ')">' +
       '<div class="grow"><div class="emp-name">' + esc(e.familyJ + ' ' + e.firstJ) + '</div>' +
       '<div class="emp-sub">' + sub + '</div></div><div class="chev">›</div></div>';
@@ -357,6 +393,7 @@ function openEmpEdit(index){
   $('empDispOrder').value = e && e.dispOrder !== '' ? e.dispOrder : '';
   $('empType').value = e && e.type ? e.type : 'Parttime';
   $('empRoll').value = e && e.roll ? e.roll : '';
+  fillBelongOptions(e ? (e.belongStore || '') : '');
   $('empBirthday').value = e ? e.birthday : '';
   $('empEmploymentDate').value = e ? e.employmentDate : '';
   $('empTerminationDate').value = e ? e.terminationDate : '';
@@ -364,6 +401,13 @@ function openEmpEdit(index){
   $('viewMain').classList.add('hidden');
   $('viewEmpEdit').classList.remove('hidden');
   window.scrollTo(0, 0);
+}
+function fillBelongOptions(current){
+  const sel = $('empBelong');
+  sel.innerHTML = '<option value="">（ブランク＝全社）</option>' + state.stores.map(function(s){
+    return '<option value="' + esc(s.storeId) + '">' + esc(s.storeId + ' ' + s.name) + '</option>';
+  }).join('');
+  sel.value = current || '';
 }
 function renderLinkBox(){
   const box = $('empLinkBox');
@@ -409,6 +453,7 @@ async function saveEmp(){
     dispOrder: $('empDispOrder').value === '' ? '' : Number($('empDispOrder').value),
     type: $('empType').value,
     roll: $('empRoll').value,
+    belongStore: $('empBelong').value,
     birthday: $('empBirthday').value, employmentDate: $('empEmploymentDate').value,
     terminationDate: $('empTerminationDate').value,
     lineId: state.editLineId
@@ -512,7 +557,101 @@ async function doDeletePer(){
   }
 }
 
-/***** 店舗設定 *****/
+/***** 店舗管理 *****/
+function renderStoreHome(){
+  $('storeCustomer').innerHTML = '<div class="emp-name">' + esc(state.customerName || '（顧客名未設定）') + '</div>' +
+    '<div class="emp-sub">顧客ID: ' + esc(state.customerId || '') + '　／　あなたは' + esc(state.myScope === 'all' ? '全社管理' : '店舗管理者') + '</div>';
+  renderStoreGroups();
+  $('addStoreCard').classList.toggle('hidden', state.myScope !== 'all');
+}
+function renderStoreGroups(){
+  const box = $('storeGroups');
+  if (!state.stores.length) { box.innerHTML = '<div class="card">店舗が登録されていません。</div>'; return; }
+  box.innerHTML = state.stores.map(function(s, i){
+    return '<div class="card row-item" onclick="openStoreSettings(' + i + ')">' +
+      '<div class="grow"><div class="emp-name">' + esc(s.name || s.storeId) + '</div>' +
+      '<div class="emp-sub">店舗ID: ' + esc(s.storeId) + (s.storeId === state.homeStoreId ? '（この管理画面の店）' : '') + '</div></div>' +
+      '<div class="chev">›</div></div>';
+  }).join('');
+}
+async function openStoreSettings(index){
+  const s = state.stores[index];
+  if (!s) return;
+  state.currentStore = s.storeId;
+  $('storeFormCard').classList.remove('hidden');
+  $('storeFormTitle').textContent = s.name + '（' + s.storeId + '）の設定';
+  if (state.storeSettings[s.storeId]) {
+    fillStoreForm(state.storeSettings[s.storeId]);
+    initMap();
+    return;
+  }
+  try {
+    const data = await callApi('getStore', { payload: JSON.stringify({ storeId: s.storeId }) });
+    state.storeSettings[s.storeId] = data.settings || {};
+    fillStoreForm(state.storeSettings[s.storeId]);
+    initMap();
+  } catch (e) { showMsg('店舗設定の読み込みに失敗しました: ' + e.message); }
+}
+function fillStoreForm(s){
+  $('setShopName').value = s['店名'] || '';
+  $('setClosedDay').value = s['定休日（曜日）'] || '';
+  $('setLat').value = s['店舗緯度'] || '';
+  $('setLng').value = s['店舗経度'] || '';
+  $('setRadius').value = s['GPS判定半径m'] || '';
+  renderHolidays(s['特別休日'] || '');
+  $('setFixed').textContent = '顧客ID: ' + (s['顧客ID'] || '') + ' / 店舗ID: ' + (s['店舗ID'] || '') +
+    ' / スキーマ版数: ' + (s['スキーマ版数'] || '') + '（この3つは導入時の項目なので、この画面では変えません）';
+}
+async function saveSettings(){
+  if (state.saving || !state.currentStore) return;
+  const payload = { storeId: state.currentStore, settings: {
+    '店名': $('setShopName').value.trim(),
+    '定休日（曜日）': $('setClosedDay').value.trim(),
+    '店舗緯度': $('setLat').value.trim(),
+    '店舗経度': $('setLng').value.trim(),
+    'GPS判定半径m': $('setRadius').value.trim(),
+    '特別休日': collectHolidays()
+  } };
+  setSaving(true, 'btnSaveSettings', '設定を保存');
+  try {
+    const data = await callApi('saveSettings', { payload: JSON.stringify(payload) });
+    state.storeSettings[state.currentStore] = data.settings || state.storeSettings[state.currentStore];
+    if (state.currentStore === state.homeStoreId) state.settings = state.storeSettings[state.currentStore];
+    const st = state.stores.filter(function(x){ return x.storeId === state.currentStore; })[0];
+    if (st && data.settings && data.settings['店名']) st.name = data.settings['店名'];
+    $('storeFormTitle').textContent = (st ? st.name : '') + '（' + state.currentStore + '）の設定';
+    renderStoreGroups();
+    fillStoreForm(state.storeSettings[state.currentStore]);
+    showMsg('設定を保存しました。', true);
+  } catch (e) { showMsg('保存に失敗しました: ' + e.message); }
+  finally { setSaving(false, 'btnSaveSettings', '設定を保存'); }
+}
+function askAddStore(){
+  if (!$('newStoreName').value.trim()) { showMsg('新しい店舗の店名を入れてください。'); return; }
+  $('storeConfirmBox').classList.add('show');
+  $('btnAddStore').classList.add('hidden');
+}
+function cancelAddStore(){
+  $('storeConfirmBox').classList.remove('show');
+  $('btnAddStore').classList.remove('hidden');
+}
+async function doAddStore(){
+  if (state.saving) return;
+  state.saving = true;
+  $('btnDoAddStore').disabled = true; $('btnDoAddStore').textContent = '作成中…';
+  try {
+    const data = await callApi('addStore', { payload: JSON.stringify({ name: $('newStoreName').value.trim() }) });
+    state.stores = data.stores || state.stores;
+    renderStoreGroups();
+    $('newStoreName').value = '';
+    cancelAddStore();
+    showMsg('店舗を追加しました（' + data.created.storeId + ' ' + data.created.name + '）。フォルダと共通マスターを作成済みです。', true);
+  } catch (e) { showMsg('店舗の追加に失敗しました: ' + e.message); }
+  finally {
+    state.saving = false;
+    $('btnDoAddStore').disabled = false; $('btnDoAddStore').textContent = '追加する';
+  }
+}
 function initMap(){
   if (typeof L === 'undefined') return;
   if (state.map) { setTimeout(function(){ state.map.invalidateSize(); moveMarker(); }, 60); return; }
@@ -545,38 +684,6 @@ function renderHolidays(csv){
 function collectHolidays(){
   const vals = Array.prototype.map.call(document.querySelectorAll('.hol-date'), function(i){ return i.value; }).filter(Boolean);
   return Array.from(new Set(vals)).sort().join(',');
-}
-function fillSettings(){
-  const s = state.settings;
-  $('setShopName').value = s['店名'] || '';
-  $('setClosedDay').value = s['定休日（曜日）'] || '';
-  $('setYearEnd').value = s['年末休み開始'] || '';
-  $('setLat').value = s['店舗緯度'] || '';
-  $('setLng').value = s['店舗経度'] || '';
-  $('setRadius').value = s['GPS判定半径m'] || '';
-  renderHolidays(s['特別休日'] || '');
-  $('setFixed').textContent = '顧客ID: ' + (s['顧客ID'] || '') + ' / 店舗ID: ' + (s['店舗ID'] || '') +
-    ' / スキーマ版数: ' + (s['スキーマ版数'] || '') + '（この3つは導入時の項目なので、この画面では変えません）';
-}
-async function saveSettings(){
-  if (state.saving) return;
-  const payload = { settings: {
-    '店名': $('setShopName').value.trim(),
-    '定休日（曜日）': $('setClosedDay').value.trim(),
-    '年末休み開始': $('setYearEnd').value.trim(),
-    '店舗緯度': $('setLat').value.trim(),
-    '店舗経度': $('setLng').value.trim(),
-    'GPS判定半径m': $('setRadius').value.trim(),
-    '特別休日': collectHolidays()
-  } };
-  setSaving(true, 'btnSaveSettings', '設定を保存');
-  try {
-    const data = await callApi('saveSettings', { payload: JSON.stringify(payload) });
-    state.settings = data.settings || state.settings;
-    fillSettings();
-    showMsg('設定を保存しました。', true);
-  } catch (e) { showMsg('保存に失敗しました: ' + e.message); }
-  finally { setSaving(false, 'btnSaveSettings', '設定を保存'); }
 }
 
 /***** タイムカード（全員分） *****/
