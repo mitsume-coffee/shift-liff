@@ -43,6 +43,7 @@
   .menu-btn .d{display:block; font-size:13px; opacity:.92; margin-top:4px;}
   .menu-btn.green{background:var(--green);} .menu-btn.olive{background:var(--olive);}
   .menu-btn.blue{background:#2b6cb0;} .menu-btn.slate{background:#595959;} .menu-btn.wine{background:var(--wine);}
+  .menu-btn.purple{background:#7050a0;}
   .badge.scope{background:#f3e8ee; color:var(--wine); border:1px solid var(--wine);}
   .btn-portal{background:#fff; border:1px solid var(--line); color:var(--muted); margin:0 0 12px;}
   .card{background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px;}
@@ -126,6 +127,20 @@
       <div class="menu-btn green" onclick="showView('emp')"><span class="t">従業員</span><span class="d">従業員マスターの追加・編集（所属店舗・管理者）</span></div>
       <div class="menu-btn slate" onclick="showView('period')"><span class="t">期間</span><span class="d">シフト募集の期間（期間マスター）</span></div>
       <div class="menu-btn olive" onclick="showView('store')"><span class="t">店舗管理</span><span class="d">顧客・店舗ごとの設定、店舗の追加</span></div>
+      <div class="menu-btn purple" onclick="showView('ai')"><span class="t">AIに相談</span><span class="d">店長の希望をAIがシフトの制約に（準備中）</span></div>
+    </section>
+
+    <!-- AIに相談（準備中） -->
+    <section id="secAi" class="hidden">
+      <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
+      <div class="card" style="text-align:center; padding:28px 18px;">
+        <div style="font-size:34px;">💬</div>
+        <div class="emp-name" style="margin-top:6px;">AIに相談（準備中）</div>
+        <p style="font-size:13px; color:var(--muted); line-height:1.8; margin-top:8px;">
+          店長の希望を普段の言葉で話すと、AIがシフトの制約に翻訳して、この店の共通マスターに覚える場所です。<br>
+          シフト案の自動作成（Phase 2）とあわせて実装予定です。
+        </p>
+      </div>
     </section>
 
     <!-- 従業員 -->
@@ -355,6 +370,7 @@ function showView(view){
   $('secPeriod').classList.toggle('hidden', view !== 'period');
   $('secTimecard').classList.toggle('hidden', view !== 'timecard');
   $('secStore').classList.toggle('hidden', view !== 'store');
+  $('secAi').classList.toggle('hidden', view !== 'ai');
   if (view === 'timecard' && !state.tcLoaded) loadTimecard();
   window.scrollTo(0, 0);
 }
