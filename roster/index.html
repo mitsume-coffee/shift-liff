@@ -29,6 +29,10 @@
   .btn { display: block; width: 100%; box-sizing: border-box; border: none; border-radius: 999px; padding: 13px; font-size: 15px; font-weight: 700; background: #0A5A0B; color: #fff; margin-top: 14px; }
   .btn:active { opacity: .85; }
   .btn.sub { background: #595959; margin: 0 0 10px; padding: 10px; font-size: 13.5px; }
+  .ctlrow { display: flex; gap: 8px; align-items: stretch; margin-bottom: 10px; }
+  .store-sel { flex: 1; font-size: 15px; padding: 8px; border-radius: 10px; border: 1.5px solid #0A5A0B; background: #fff; color: #0A5A0B; font-weight: 700; min-width: 0; }
+  .btn.sub.small { width: auto; margin: 0; padding: 8px 14px; font-size: 13px; flex: 0 0 auto; }
+  .storename { font-size: 14px; font-weight: 700; color: #0A5A0B; margin: 2px 0 6px; }
   .note { font-size: 12px; color: #8a8578; line-height: 1.7; margin-top: 10px; }
   #status { padding: 30px 0; text-align: center; color: #8a8578; font-size: 14px; }
   .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -55,7 +59,11 @@
 <main>
   <div id="status">読み込み中…</div>
   <div id="content" style="display:none">
-    <button class="btn sub" id="viewToggle">自分だけ表示</button>
+    <div class="ctlrow">
+      <select id="storeSel" class="store-sel"></select>
+      <button class="btn sub small" id="viewToggle">自分だけ表示</button>
+    </div>
+    <div class="storename" id="storeNameLabel"></div>
     <div class="scroll"><table id="all"></table></div>
     <button class="btn" id="icsBtn">自分のシフトをカレンダーに追加（.ics）</button>
     <div class="note">ボタンを押すと外部ブラウザが開きます。そちらでダウンロードし、ファイル（shift.ics）を開くと、カレンダーに自分のシフトがまとめて入ります。</div>
@@ -66,8 +74,10 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbzTxGUDPTMolQJ1IA4zhnUDvGxKIcROgPqXP9WjBGQwVHLkoJEe0nP3L6sTW0SSHD4y/exec';
   var cbSeq = 0;
   var roster = null;
+  var mineData = null;
   var onlyMe = false;
   var currentKey = '';
+  var storeId = '';
   var idToken = '';
   var displayName = '';
 
@@ -120,11 +130,66 @@
 
   async function load(key) {
     document.getElementById('periodLabel').textContent = 'データ取得中…';
-    var res = await jsonp('getRoster', { idToken: idToken, name: displayName, period: key || '' });
-    if (!res.ok) throw new Error(res.error || '取得に失敗しました');
+    var res = await jsonp('getRoster', { idToken: idToken, name: displayName, period: key || '', store: storeId });
+    if (!res.ok) {
+      if (res.error === 'NO_ACCESS') { showNoAccess(); throw new Error('NO_ACCESS'); }
+      throw new Error(res.error || '取得に失敗しました');
+    }
     roster = res.data;
     currentKey = roster.periodKey;
-    render();
+    storeId = roster.storeId || storeId;
+    fillStoreSel(roster);
+    if (onlyMe) { await loadMine(); renderMine(); } else { render(); }
+  }
+
+  async function loadMine() {
+    var res = await jsonp('getRosterMine', { idToken: idToken, name: displayName, period: currentKey, store: storeId });
+    if (!res.ok) {
+      if (res.error === 'NO_ACCESS') { showNoAccess(); throw new Error('NO_ACCESS'); }
+      throw new Error(res.error || '取得に失敗しました');
+    }
+    mineData = res.data;
+  }
+
+  function fillStoreSel(d) {
+    var sel = document.getElementById('storeSel');
+    var stores = d.stores || [];
+    sel.innerHTML = stores.map(function (s) {
+      return '<option value="' + esc(s.storeId) + '">' + esc(s.name) + '</option>';
+    }).join('');
+    sel.value = d.storeId || '';
+  }
+
+  function renderMine() {
+    var d = mineData;
+    if (!d) return;
+    document.getElementById('periodLabel').textContent = d.label;
+    document.getElementById('prevBtn').disabled = !neighborKey(-1);
+    document.getElementById('nextBtn').disabled = !neighborKey(1);
+    document.getElementById('icsBtn').style.display = 'none';
+    document.getElementById('viewToggle').textContent = '全員表示';
+    document.getElementById('storeNameLabel').textContent = '全店舗';
+    var multi = (d.stores || []).length > 1;
+    var byDate = {};
+    var order = [];
+    (d.entries || []).forEach(function (e) {
+      if (!byDate[e.date]) { byDate[e.date] = { dayLabel: e.dayLabel, wd: e.wd, items: [] }; order.push(e.date); }
+      byDate[e.date].items.push(e);
+    });
+    if (!order.length) {
+      document.getElementById('all').innerHTML = '<tr><td style="padding:16px;">この期間のシフトはまだありません。</td></tr>';
+      return;
+    }
+    var t = '<tr><th>日</th><th>曜</th><th>自分のシフト</th></tr>';
+    t += order.map(function (date) {
+      var g = byDate[date];
+      var cls = g.wd === '日' ? 'r-sun' : (g.wd === '土' ? 'r-sat' : '');
+      var cell = g.items.map(function (e) {
+        return (multi ? esc(e.storeName) + '：' : '') + esc(e.text);
+      }).join('<br>');
+      return '<tr class="' + cls + '"><td class="d">' + esc(g.dayLabel) + '</td><td class="w">' + g.wd + '</td><td class="me">' + cell + '</td></tr>';
+    }).join('');
+    document.getElementById('all').innerHTML = t;
   }
 
   function neighborKey(dir) {
@@ -147,10 +212,11 @@
     // カレンダー追加ボタンは、自分のシフトがある時だけ出す
     var myDays = d.me ? d.rows.filter(function (r) { return r.cells[d.me]; }) : [];
     document.getElementById('icsBtn').style.display = myDays.length ? 'block' : 'none';
-    // 全体表（自分だけ表示の切替つき）
-    var cols = (onlyMe && d.me) ? [d.me] : d.columns;
+    document.getElementById('storeNameLabel').textContent = d.storeName || '';
+    // 全体表
+    var cols = d.columns;
     document.getElementById('viewToggle').style.display = d.me ? 'block' : 'none';
-    document.getElementById('viewToggle').textContent = onlyMe ? '全員表示' : '自分だけ表示';
+    document.getElementById('viewToggle').textContent = '自分だけ表示';
     var t = '<tr><th>日</th><th>曜</th>' + cols.map(function (c) {
       return '<th' + (c === d.me ? ' class="me"' : '') + '>' + esc(c) + '</th>';
     }).join('') + '</tr>';
@@ -167,16 +233,26 @@
 
   document.getElementById('prevBtn').addEventListener('click', async function () {
     var k = neighborKey(-1);
-    if (k) { try { await load(k); } catch (e) { alert('読み込めませんでした：' + (e.message || e)); } }
+    if (k) { try { await load(k); } catch (e) { if (e && e.message === 'NO_ACCESS') return; alert('読み込めませんでした：' + (e.message || e)); } }
   });
   document.getElementById('nextBtn').addEventListener('click', async function () {
     var k = neighborKey(1);
-    if (k) { try { await load(k); } catch (e) { alert('読み込めませんでした：' + (e.message || e)); } }
+    if (k) { try { await load(k); } catch (e) { if (e && e.message === 'NO_ACCESS') return; alert('読み込めませんでした：' + (e.message || e)); } }
   });
 
-  document.getElementById('viewToggle').addEventListener('click', function () {
+  document.getElementById('storeSel').addEventListener('change', async function () {
+    storeId = document.getElementById('storeSel').value;
+    try { await load(''); } catch (e) { if (e && e.message === 'NO_ACCESS') return; alert('読み込めませんでした：' + (e.message || e)); }
+  });
+
+  document.getElementById('viewToggle').addEventListener('click', async function () {
     onlyMe = !onlyMe;
-    if (roster) render();
+    if (onlyMe) {
+      try { await loadMine(); renderMine(); }
+      catch (e) { onlyMe = false; if (e && e.message === 'NO_ACCESS') return; alert('読み込めませんでした：' + (e.message || e)); }
+    } else if (roster) {
+      render();
+    }
   });
 
   var icsBusy = false;
@@ -190,7 +266,7 @@
     var orig = btn.textContent;
     btn.textContent = '準備中…';
     try {
-      var res = await jsonp('getIcs', { idToken: idToken, period: currentKey });
+      var res = await jsonp('getIcs', { idToken: idToken, period: currentKey, store: storeId });
       if (!res.ok) throw new Error(res.error || '取得に失敗しました');
       var payload = JSON.stringify({ me: res.data.me, label: res.data.monthLabel, ics: res.data.ics });
       var url = new URL('ics.html', location.href).href + '#' + btoa(unescape(encodeURIComponent(payload)));
