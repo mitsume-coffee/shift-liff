@@ -52,6 +52,8 @@
   #saveBtn:disabled { background: #b9b0a6; }
   #status { text-align: center; font-size: 12.5px; color: #8a7461; margin-top: 7px; min-height: 16px; }
   .notice { background: #fff3cd; border: 1px solid #e6cf8a; color: #6b5510; border-radius: 12px; padding: 12px; font-size: 14px; line-height: 1.6; margin-bottom: 12px; display: none; }
+  .titlerow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .store-sel { font-size: 15px; padding: 7px 8px; border-radius: 9px; border: 1.5px solid #0A5A0B; background: #fff; color: #0A5A0B; font-weight: 700; max-width: 55%; }
   .guide { font-size: 12.5px; color: #6b6252; line-height: 1.7; margin: 0 2px 12px; }
   #loading { text-align: center; padding: 40px 0; color: #836312; font-size: 14px; }
   .hidden { display: none !important; }
@@ -61,7 +63,10 @@
 <header>
   <div class="brandbar"><a href="https://mitsume-coffee.github.io/shift-liff/portal/"><img class="logo" src="Logo三ツ目2nd完成透過.png" alt="三ツ目珈琲"></a></div>
   <div class="titlebar">
-  <h1>シフト希望提出（<span id="monthLabel">…</span>）</h1>
+  <div class="titlerow">
+    <h1>シフト希望提出</h1>
+    <select id="storeSel" class="store-sel"></select>
+  </div>
   <div class="meta">
     <span id="userName"></span> さん<br>
     締切：<b id="deadline">…</b>（締切までは何度でも変更できます）<br>
@@ -107,7 +112,7 @@
 <script>
   var LIFF_ID = '2012734423-wNqztLhN';
   var PRESETS = {"full":{"label":"全部OK","start":"08:30","end":"17:00"},"early":{"label":"早番OK","start":"08:30","end":"14:30"},"late":{"label":"遅番OK","start":"11:00","end":"17:00"}};
-  var state = { days: {}, locked: false, month: '', closed: {} };
+  var state = { days: {}, locked: false, month: '', closed: {}, storeId: '', idToken: '', name: '' };
 
   var API_URL = 'https://script.google.com/macros/s/AKfycbzTxGUDPTMolQJ1IA4zhnUDvGxKIcROgPqXP9WjBGQwVHLkoJEe0nP3L6sTW0SSHD4y/exec';
   var cbSeq = 0;
@@ -145,8 +150,9 @@
       var idToken = liff.getIDToken();
       if (!idToken) { setLoading('ログイン情報が取得できませんでした。LINEアプリから開き直してください。'); return; }
       var profile = await liff.getProfile().catch(function () { return { displayName: '' }; });
-      var data = await api('getInitialData', { idToken: idToken, name: profile.displayName || '' });
-      render(data);
+      state.idToken = idToken;
+      state.name = profile.displayName || '';
+      await loadData();
     } catch (e) {
       if (e && e.message === 'NO_ACCESS') return;
       setLoading('読み込みに失敗しました：' + (e && e.message ? e.message : e));
@@ -154,10 +160,30 @@
     }
   }
 
+  async function loadData() {
+    setLoading('データ取得中…');
+    $('loading').classList.remove('hidden');
+    $('main').classList.add('hidden');
+    $('footer').classList.add('hidden');
+    var data = await api('getInitialData', { idToken: state.idToken, name: state.name, payload: JSON.stringify({ storeId: state.storeId }) });
+    state.storeId = data.storeId || state.storeId;
+    render(data);
+  }
+
+  function fillStoreSel(data) {
+    var sel = $('storeSel');
+    var stores = data.stores || [];
+    sel.innerHTML = stores.map(function (s) {
+      return '<option value="' + s.storeId + '">' + s.name + '</option>';
+    }).join('');
+    sel.value = data.storeId || '';
+    sel.style.display = stores.length > 1 ? '' : 'none';
+  }
+
   function render(data) {
     state.month = data.month;
     state.locked = data.locked;
-    $('monthLabel').textContent = data.monthLabel;
+    fillStoreSel(data);
     $('userName').textContent = data.name || '';
     $('deadline').textContent = data.deadlineText;
     if (data.updatedAt) $('lastSaved').textContent = '前回の提出：' + data.updatedAt;
@@ -188,16 +214,17 @@
   function dayElement(d) {
     var el = document.createElement('div');
     el.dataset.date = d.date;
+    var md = Number(d.date.slice(5, 7)) + '/' + d.day + '(' + d.dow + ')';
     if (d.closed) {
       el.className = 'day closed';
       el.innerHTML =
-        '<div class="head"><span class="date">' + d.day + '日</span><span class="dow">（' + d.dow + '）</span>' +
+        '<div class="head"><span class="date">' + md + '</span>' +
         '<span class="state">' + d.closed + '</span></div>';
       return el;
     }
     el.className = 'day' + (d.isSun ? ' sun' : d.isSat ? ' sat' : '');
     el.innerHTML =
-      '<div class="head"><span class="date">' + d.day + '日</span><span class="dow">（' + d.dow + '）</span>' +
+      '<div class="head"><span class="date">' + md + '</span>' +
       '<span class="state"></span></div>' +
       '<div class="seg">' +
       '<button data-t="full">全部OK</button>' +
@@ -299,7 +326,7 @@
     try {
       var idToken = liff.getIDToken();
       var profile = await liff.getProfile().catch(function () { return { displayName: '' }; });
-      var res = await api('saveSubmission', { idToken: idToken, name: profile.displayName || '', payload: JSON.stringify({ month: state.month, days: days, memo: $('memo').value }) });
+      var res = await api('saveSubmission', { idToken: idToken, name: profile.displayName || '', payload: JSON.stringify({ month: state.month, days: days, memo: $('memo').value, storeId: state.storeId }) });
       $('status').textContent = '提出しました（' + res.updatedAt + '）。締切までは変更できます。' + (undecided ? '未定の日が' + undecided + '日あります。' : '');
       $('lastSaved').textContent = '前回の提出：' + res.updatedAt;
     } catch (e) {
@@ -308,6 +335,14 @@
     } finally {
       var sb = $('saveBtn'); if (sb) sb.disabled = false;
     }
+  });
+
+  $('storeSel').addEventListener('change', function () {
+    state.storeId = $('storeSel').value;
+    loadData().catch(function (e) {
+      if (e && e.message === 'NO_ACCESS') return;
+      setLoading('読み込みに失敗しました：' + (e && e.message ? e.message : e));
+    });
   });
 
   init();
