@@ -57,6 +57,8 @@
   .total-line{text-align:right; font-weight:700; margin-top:10px; font-size:15px;}
   .back-btn{margin-bottom:12px; background:#fff; border:1px solid var(--line); border-radius:999px; padding:8px 16px; font-size:14px; cursor:pointer;}
   .month-nav{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;}
+  .daterow{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .store-sel{margin-left:auto; font-size:15px; padding:7px 8px; border-radius:9px; border:1.5px solid var(--green); background:#fff; color:var(--green); font-weight:700; max-width:55%;}
   .month-nav .date{margin:0; font-size:17px;}
   .month-nav .back-btn{margin-bottom:0; white-space:nowrap;}
   .field{margin-bottom:14px;}
@@ -80,7 +82,10 @@
 <main>
   <!-- 打刻ビュー -->
   <section id="viewPunch" class="view open">
-    <div class="date" id="dateLabel"></div>
+    <div class="daterow">
+      <div class="date" id="dateLabel"></div>
+      <select id="storeSel" class="store-sel"></select>
+    </div>
     <p class="greet" id="greet"></p>
     <div class="msg" id="msg"></div>
     <div class="open-warn" id="openWarn"></div>
@@ -198,6 +203,25 @@ function showNoAccess(){
     '</div></div>';
 }
 
+let selStore = '';
+function fillStoreSel(){
+  const sel = document.getElementById('storeSel');
+  if (!sel || !state || !state.stores) return;
+  sel.innerHTML = '';
+  state.stores.forEach(function(s){
+    const o = document.createElement('option');
+    o.value = s.storeId; o.textContent = s.name;
+    sel.appendChild(o);
+  });
+  sel.value = state.storeId || selStore;
+}
+async function refreshStatus(){
+  state = await api('getStatus', { store: selStore });
+  if (state.storeId) selStore = state.storeId;
+  fillStoreSel();
+  render();
+}
+
 async function api(action, extra){
   const params = Object.assign({ action: action, idToken: idToken, name: myName }, extra || {});
   const res = await jsonp(params);
@@ -264,7 +288,7 @@ async function doPunch(kind, breakMin){
   showMsg('位置情報を確認しています…', true);
   try {
     const pos = await getPosition();
-    const payload = { kind: kind, lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy || 0) };
+    const payload = { kind: kind, lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy || 0), storeId: selStore };
     if (kind === 'out') payload.breakMin = breakMin;
     const data = await api('punch', { payload: JSON.stringify(payload) });
     state.record = data.record; state.canIn = data.canIn; state.canOut = data.canOut;
@@ -315,7 +339,7 @@ document.querySelectorAll('[data-back]').forEach(function(b){
 /* 一覧 */
 let listMonth = '';
 async function loadList(ym){
-  const data = await api('getMonth', ym ? { month: ym } : {});
+  const data = await api('getMonth', ym ? { month: ym, store: selStore } : { store: selStore });
   listMonth = data.month;
   document.getElementById('listTitle').textContent = data.month.replace('-', '年') + '月の一覧';
   const tb = document.getElementById('listBody');
@@ -382,10 +406,10 @@ document.getElementById('btnSaveEdit').addEventListener('click', async function(
       inTime: document.getElementById('editIn').value,
       outTime: document.getElementById('editOut').value,
       breakMin: Number(document.getElementById('editBreak').value),
-      leave: leave
+      leave: leave,
+      storeId: selStore
     })});
-    state = await api('getStatus');
-    render();
+    await refreshStatus();
     showView('viewPunch');
     showMsg('保存しました', true);
   } catch (e) { showEditMsg(e.message, false); }
@@ -397,12 +421,17 @@ document.getElementById('btnDelete').addEventListener('click', async function(){
     return;
   }
   try {
-    await api('deleteRecord', { date: editDate });
-    state = await api('getStatus');
-    render();
+    await api('deleteRecord', { date: editDate, store: selStore });
+    await refreshStatus();
     showView('viewPunch');
     showMsg('削除しました', true);
   } catch (e) { showEditMsg(e.message, false); }
+});
+
+document.getElementById('storeSel').addEventListener('change', async function(){
+  selStore = document.getElementById('storeSel').value;
+  try { await refreshStatus(); showMsg('', true); }
+  catch (e) { if (e && e.message === 'NO_ACCESS') return; showMsg(e.message, false); }
 });
 
 /* 起動 */
@@ -413,8 +442,7 @@ document.getElementById('btnDelete').addEventListener('click', async function(){
     idToken = liff.getIDToken();
     const profile = await liff.getProfile();
     myName = profile.displayName || '';
-    state = await api('getStatus');
-    render();
+    await refreshStatus();
   } catch (e) {
     if (e && e.message === 'NO_ACCESS') return;
     const el = document.getElementById('loading');
