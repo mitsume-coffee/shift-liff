@@ -46,6 +46,9 @@
   .menu-btn.purple{background:#7050a0;}
   .badge.scope{background:#f3e8ee; color:var(--wine); border:1px solid var(--wine);}
   .btn-portal{background:#fff; border:1px solid var(--line); color:var(--muted); margin:0 0 12px;}
+  .store-filter{display:flex; align-items:center; gap:8px; margin:0 0 12px;}
+  .store-filter label{font-size:13px; color:var(--muted); white-space:nowrap;}
+  .store-sel{flex:1; padding:10px; font-size:15px; border:1px solid var(--line); border-radius:10px; background:#fff; min-width:0;}
   .card{background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px;}
   .row-item{display:flex; align-items:center; gap:10px; cursor:pointer;}
   .row-item .grow{flex:1; min-width:0;}
@@ -105,7 +108,7 @@
 <header>
   <a class="logo" href="../portal/"><img src="../Logo三ツ目2nd完成透過.png" alt="Mitsume Coffee"></a>
   <div class="shop">MITSUME COFFEE</div>
-  <h1>管理画面</h1>
+  <h1 onclick="showView('portal')" style="cursor:pointer" title="管理ポータルへ戻る">管理画面</h1>
 </header>
 
 <main>
@@ -132,7 +135,7 @@
 
     <!-- シフトを作る（準備中） -->
     <section id="secShift" class="hidden">
-      <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
+      <div class="store-filter"><label>店舗</label><select class="store-sel" onchange="onFilterStoreChange(this.value)"></select></div>
       <p class="note" style="text-align:left; margin:0 0 10px;">まず、シフトを作る店舗を選んでください。</p>
       <div id="shiftStores"></div>
       <div class="card hidden" id="shiftPlanCard" style="text-align:center; padding:28px 18px;">
@@ -147,7 +150,7 @@
 
     <!-- 従業員 -->
     <section id="secEmp" class="hidden">
-      <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
+      <div class="store-filter"><label>店舗</label><select class="store-sel" onchange="onFilterStoreChange(this.value)"></select></div>
       <div id="empList"></div>
       <button class="btn btn-add" onclick="openEmpEdit(null)">＋ 従業員を追加</button>
       <p class="note">LINEの紐付けは手入力しません。各アプリを開いたことがある人が「候補」に出るので、編集画面でタップして紐付けます。</p>
@@ -155,7 +158,7 @@
 
     <!-- 期間 -->
     <section id="secPeriod" class="hidden">
-      <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
+      <div class="store-filter"><label>店舗</label><select class="store-sel" onchange="onFilterStoreChange(this.value)"></select></div>
       <div id="periodList"></div>
       <button class="btn btn-add" onclick="openPeriodEdit(null)">＋ 期間を追加</button>
       <p class="note">期間マスターが、シフト提出の受付判定とシフト照会の ◀ ▶ 移動を決めます。</p>
@@ -163,7 +166,7 @@
 
     <!-- タイムカード（全員分） -->
     <section id="secTimecard" class="hidden">
-      <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
+      <div class="store-filter"><label>店舗</label><select class="store-sel" onchange="onFilterStoreChange(this.value)"></select></div>
       <div class="tc-nav">
         <button type="button" id="tcPrev" onclick="shiftTcMonth(-1)">◀</button>
         <div class="tc-title" id="tcTitle">タイムカード</div>
@@ -175,7 +178,7 @@
 
     <!-- 店舗管理 -->
     <section id="secStore" class="hidden">
-      <button class="btn btn-portal" onclick="showView('portal')">← 管理ポータルへ</button>
+      <div class="store-filter"><label>店舗</label><select class="store-sel" onchange="onFilterStoreChange(this.value)"></select></div>
       <div class="card" id="storeCustomer"></div>
       <div id="storeGroups"></div>
       <div class="card hidden" id="storeFormCard">
@@ -305,7 +308,7 @@ const state = { idToken:'', name:'', admin:null, employees:[], periods:[], setti
                 view:'portal', editEmp:null, editLineId:'', editPeriod:null, saving:false, map:null, marker:null,
                 tcMonth:'', tcLoaded:false,
                 stores:[], customerName:'', customerId:'', homeStoreId:'S001', myScope:'',
-                currentStore:'', storeSettings:{} };
+                currentStore:'', storeSettings:{}, filterStore:'', editPeriodStore:'' };
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -348,10 +351,12 @@ async function init(){
     state.stores = data.stores || []; state.customerName = data.customerName || '';
     state.customerId = data.customerId || ''; state.homeStoreId = data.homeStoreId || 'S001';
     state.myScope = (data.admin && data.admin.scope) || '';
+    state.filterStore = state.myScope === 'store' ? ((data.admin && data.admin.storeId) || state.homeStoreId) : '';
     if (state.homeStoreId) state.storeSettings[state.homeStoreId] = state.settings;
     $('viewLoading').classList.add('hidden');
     $('viewMain').classList.remove('hidden');
     $('who').textContent = state.admin.name + ' さん（' + state.admin.role + '）';
+    fillStoreSelects();
     renderEmpList(); renderPeriodList(); renderStoreHome();
     showView('portal');
   } catch (e) {
@@ -362,6 +367,33 @@ async function init(){
       showMsg('読み込みに失敗しました: ' + e.message);
     }
   }
+}
+
+/***** 店舗フィルタ（各画面の先頭の店舗セレクタ） *****/
+function fillStoreSelects(){
+  let opts = '';
+  if (state.myScope !== 'store') opts += '<option value="">全店舗</option>';
+  opts += state.stores.map(function(s){
+    return '<option value="' + esc(s.storeId) + '">' + esc(s.name || s.storeId) + '</option>';
+  }).join('');
+  document.querySelectorAll('.store-sel').forEach(function(sel){
+    sel.innerHTML = opts;
+    sel.value = state.filterStore;
+  });
+}
+async function onFilterStoreChange(v){
+  state.filterStore = v;
+  document.querySelectorAll('.store-sel').forEach(function(sel){ sel.value = v; });
+  await reloadData();
+  if (state.view === 'timecard') loadTimecard();
+}
+async function reloadData(){
+  try {
+    const data = await callApi('getAdmin', { payload: JSON.stringify({ storeId: state.filterStore }) });
+    state.employees = data.employees || [];
+    state.periods = data.periods || [];
+    renderEmpList(); renderPeriodList();
+  } catch (e) { showMsg('読み込みに失敗しました: ' + e.message); }
 }
 
 /***** 画面切り替え（管理ポータル ⇔ 各画面） *****/
@@ -400,7 +432,8 @@ function renderEmpList(){
       (e.roll === 'admin' ? '<span class="badge scope">' + (e.belongStore ? '店舗管理者（' + esc(e.belongStore) + '）' : '全社管理') + '</span>' : '') +
       (e.lineId ? '<span class="badge line-ok">LINE登録済</span>' : '<span class="badge line-ng">LINE未登録</span>') +
       (e.terminationDate ? '<span class="badge retired">退職 ' + esc(e.terminationDate) + '</span>' : '');
-    const sub = (e.dispOrder !== '' ? '並び順 ' + e.dispOrder + '　' : '') +
+    const sub = (e.storeName ? '店舗: ' + esc(e.storeName) + '　' : '') +
+      (e.dispOrder !== '' ? '並び順 ' + e.dispOrder + '　' : '') +
       (e.roll !== 'admin' && e.belongStore ? '所属: ' + esc(e.belongStore) + '　' : '') + badges;
     return '<div class="card row-item" onclick="openEmpEdit(' + i + ')">' +
       '<div class="grow"><div class="emp-name">' + esc(e.familyJ + ' ' + e.firstJ) + '</div>' +
@@ -474,6 +507,7 @@ function unlinkEmp(){ state.editLineId = ''; renderLinkBox(); renderCandList(); 
 async function saveEmp(){
   if (state.saving) return;
   const payload = {
+    storeId: state.editEmp ? (state.editEmp.storeId || state.homeStoreId) : (state.filterStore || state.homeStoreId),
     row: state.editEmp ? state.editEmp.row : 0,
     familyJ: $('empFamilyJ').value.trim(), firstJ: $('empFirstJ').value.trim(),
     familyE: $('empFamilyE').value.trim(), firstE: $('empFirstE').value.trim(),
@@ -488,10 +522,8 @@ async function saveEmp(){
   if (!payload.familyJ) { showMsg('姓を入れてください。'); return; }
   setSaving(true, 'btnSaveEmp', '保存する');
   try {
-    const data = await callApi('saveEmployee', { payload: JSON.stringify(payload) });
-    state.employees = data.employees || state.employees;
-    state.candidates = data.candidates || state.candidates;
-    renderEmpList();
+    await callApi('saveEmployee', { payload: JSON.stringify(payload) });
+    await reloadData();
     backToMain();
     showMsg('従業員を保存しました。', true);
   } catch (e) { showMsg('保存に失敗しました: ' + e.message); }
@@ -505,7 +537,7 @@ function renderPeriodList(){
   box.innerHTML = state.periods.map(function(p, i){
     return '<div class="card row-item" onclick="openPeriodEdit(' + i + ')">' +
       '<div class="grow"><div class="emp-name">' + esc(p.label || p.periodId) + '</div>' +
-      '<div class="emp-sub">期間ID: ' + esc(p.periodId) + '　対象: ' + esc(p.start) + ' 〜 ' + esc(p.end) +
+      '<div class="emp-sub">' + (p.storeName ? '店舗: ' + esc(p.storeName) + '　' : '') + '期間ID: ' + esc(p.periodId) + '　対象: ' + esc(p.start) + ' 〜 ' + esc(p.end) +
       (p.acceptEnd ? '<br>受付終了: ' + esc(p.acceptEnd) : '') +
       (p.sheetName ? '<br>確定シート: ' + esc(p.sheetName) : '') + '</div></div><div class="chev">›</div></div>';
   }).join('');
@@ -523,6 +555,7 @@ function syncLabelFromDates(){
 function openPeriodEdit(index){
   const p = (index === null || index === undefined) ? null : state.periods[index];
   state.editPeriod = p;
+  state.editPeriodStore = p ? (p.storeId || state.homeStoreId) : (state.filterStore || state.homeStoreId);
   $('perPeriodId').value = p ? p.periodId : '';
   $('perPeriodId').placeholder = p ? '' : '保存時に自動で付きます（開始日の年月）';
   $('perStart').value = p ? p.start : '';
@@ -541,6 +574,7 @@ function openPeriodEdit(index){
 async function savePer(){
   if (state.saving) return;
   const payload = {
+    storeId: state.editPeriodStore || state.homeStoreId,
     row: state.editPeriod ? state.editPeriod.row : 0,
     periodId: $('perPeriodId').value.trim(),
     start: $('perStart').value, end: $('perEnd').value,
@@ -552,8 +586,7 @@ async function savePer(){
   setSaving(true, 'btnSavePer', '保存する');
   try {
     const data = await callApi('savePeriod', { payload: JSON.stringify(payload) });
-    state.periods = data.periods || state.periods;
-    renderPeriodList();
+    await reloadData();
     backToMain();
     showMsg('期間を保存しました。' + (data.savedId ? '（期間ID: ' + data.savedId + '）' : ''), true);
   } catch (e) { showMsg('保存に失敗しました: ' + e.message); }
@@ -572,9 +605,8 @@ async function doDeletePer(){
   state.saving = true;
   $('btnDoDelPer').disabled = true; $('btnDoDelPer').innerHTML = '<span class="spinner ondark"></span>削除中…';
   try {
-    const data = await callApi('deletePeriod', { payload: JSON.stringify({ row: state.editPeriod.row }) });
-    state.periods = data.periods || state.periods;
-    renderPeriodList();
+    const data = await callApi('deletePeriod', { payload: JSON.stringify({ row: state.editPeriod.row, storeId: state.editPeriodStore || state.homeStoreId }) });
+    await reloadData();
     backToMain();
     showMsg('期間を削除しました。', true);
   } catch (e) { showMsg('削除に失敗しました: ' + e.message); }
@@ -756,7 +788,7 @@ async function loadTimecard(){
   $('tcTitle').textContent = state.tcMonth.replace('-', '年') + '月';
   $('tcList').innerHTML = '<div class="loading"><span class="spinner big"></span>読み込み中…</div>';
   try {
-    const data = await callApi('getTimecard', { payload: JSON.stringify({ month: state.tcMonth }) });
+    const data = await callApi('getTimecard', { payload: JSON.stringify({ month: state.tcMonth, storeId: state.filterStore }) });
     state.tcLoaded = true;
     renderTimecard(data);
   } catch (e) {
@@ -785,6 +817,7 @@ function renderTimecard(data){
       if (r.rawOut && r.rawOut !== r.outTime) raw.push('退' + r.rawOut);
       return '<tr>' +
         '<td>' + md + '</td>' +
+        '<td>' + esc(r.storeName || '') + '</td>' +
         '<td>' + esc(r.inTime || (r.leave || '—')) + '</td>' +
         '<td>' + (r.open ? '<span class="tc-open">未退社</span>' : esc(r.outTime || '—')) + '</td>' +
         '<td>' + (r.inTime && r.outTime ? r.breakMin + '分' : '—') + '</td>' +
@@ -794,7 +827,7 @@ function renderTimecard(data){
     }).join('');
     return '<div class="card"><div class="emp-name">' + esc(p.name) +
       ' <span style="font-size:13px;color:var(--muted);font-weight:400;">合計 ' + fmtHours(p.totalMin) + ' 時間</span></div>' +
-      '<table class="tc-table"><tr><th>日</th><th>出社</th><th>退社</th><th>休憩</th><th>実働</th><th></th></tr>' +
+      '<table class="tc-table"><tr><th>日</th><th>店舗</th><th>出社</th><th>退社</th><th>休憩</th><th>実働</th><th></th></tr>' +
       rows + '</table></div>';
   }).join('');
 }
