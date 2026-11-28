@@ -41,7 +41,7 @@ function handleApi_(p) {
     if (p.action === 'checkAdmin') {
       out = { ok: true, data: checkAdmin(p.idToken || '') };
     } else if (p.action === 'getAdmin') {
-      out = { ok: true, data: getAdmin(p.idToken || '', p.name || '') };
+      out = { ok: true, data: getAdmin(p.idToken || '', p.name || '', JSON.parse(p.payload || '{}')) };
     } else if (p.action === 'saveEmployee') {
       out = { ok: true, data: saveEmployee(p.idToken || '', p.name || '', JSON.parse(p.payload || '{}')) };
     } else if (p.action === 'savePeriod') {
@@ -277,23 +277,44 @@ function readCandidates_(ss) {
 }
 
 /***** 初期表示（管理者のみ） *****/
-function getAdmin(idToken, displayName) {
+function getAdmin(idToken, displayName, payload) {
   const user = verifyIdToken(idToken);
   const admin = requireAdmin_(user.userId);
   const ss = masterBook_();
   const settings = readSettings_(ss);
   let stores = readStores_(ss);
   if (admin.scope === 'store') stores = stores.filter(function (s) { return s.storeId === admin.storeId; });
+  // 店舗フィルタ: 指定があればその店のマスター、なければ全体管理者は全店分を集約、店舗管理者は自店分
+  const wantStore = String((payload && payload.storeId) || '');
+  let employees = [], periods = [];
+  if (wantStore) {
+    requireStoreAccess_(admin, wantStore);
+    const b = storeBook_(wantStore);
+    employees = readEmployees_(b).map(function (e) { e.storeId = wantStore; return e; });
+    periods = readPeriods_(b).map(function (p) { p.storeId = wantStore; return p; });
+  } else if (admin.scope === 'store') {
+    const b = storeBook_(admin.storeId);
+    employees = readEmployees_(b).map(function (e) { e.storeId = admin.storeId; return e; });
+    periods = readPeriods_(b).map(function (p) { p.storeId = admin.storeId; return p; });
+  } else {
+    stores.forEach(function (s) {
+      const b = storeBook_(s.storeId);
+      readEmployees_(b).forEach(function (e) { e.storeId = s.storeId; e.storeName = s.name; employees.push(e); });
+      readPeriods_(b).forEach(function (p) { p.storeId = s.storeId; p.storeName = s.name; periods.push(p); });
+    });
+    periods.sort(function (a, b) { return a.start < b.start ? -1 : 1; });
+  }
   return {
     admin: { name: admin.name || displayName || user.name || '', role: admin.role, scope: admin.scope, storeId: admin.storeId },
     customerName: settings['顧客名'] || '',
     customerId: settings['顧客ID'] || '',
     homeStoreId: CONFIG.HOME_STORE_ID,
     stores: stores,
-    employees: readEmployees_(ss),
-    periods: readPeriods_(ss),
+    employees: employees,
+    periods: periods,
     settings: settings,
-    candidates: readCandidates_(ss)
+    candidates: readCandidates_(ss),
+    viewStoreId: wantStore
   };
 }
 
@@ -323,7 +344,9 @@ function saveEmployee(idToken, displayName, payload) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const ss = masterBook_();
+    const targetStoreE = String(payload.storeId || '');
+    if (targetStoreE) requireStoreAccess_(admin, targetStoreE);
+    const ss = targetStoreE ? storeBook_(targetStoreE) : masterBook_();
     const sheet = ss.getSheetByName(SHEET_EMP);
     const row = Number(payload.row || 0);
     let old = null, employeeNo = '', customerId = '', storeId = '';
@@ -376,12 +399,15 @@ function savePeriod(idToken, displayName, payload) {
   const admin = requireAdmin_(user.userId);
   const start = String(payload.start || ''), end = String(payload.end || '');
   if (!dateOk_(start) || !start || !dateOk_(end) || !end) throw new Error('対象期間の開始日・終了日を入れてください。');
+  const targetStoreP = String(payload.storeId || '');
+  if (targetStoreP) requireStoreAccess_(admin, targetStoreP);
+  const periodBook = targetStoreP ? storeBook_(targetStoreP) : masterBook_();
   let periodId = String(payload.periodId || '').trim();
   if (Number(payload.row || 0) < 2 && !periodId) {
     // 新規作成で期間IDが空なら、開始日の年月（YYYYMM）から自動で付ける。重なったら -2, -3… を足す
     const base = start.slice(0, 4) + start.slice(5, 7);
     const existing = {};
-    masterBook_().getSheetByName(SHEET_PERIOD).getDataRange().getValues().forEach(function (r, i) {
+    periodBook.getSheetByName(SHEET_PERIOD).getDataRange().getValues().forEach(function (r, i) {
       if (i > 0 && r[0]) existing[String(r[0])] = true;
     });
     periodId = base;
@@ -396,7 +422,7 @@ function savePeriod(idToken, displayName, payload) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const ss = masterBook_();
+    const ss = periodBook;
     const sheet = ss.getSheetByName(SHEET_PERIOD);
     const row = Number(payload.row || 0);
     let extensions = '', customerId = '', storeId = '', periodNo = '';
@@ -437,10 +463,12 @@ function deletePeriod(idToken, displayName, payload) {
   const admin = requireAdmin_(user.userId);
   const row = Number(payload.row || 0);
   if (row < 2) throw new Error('削除する期間が指定されていません。');
+  const targetStoreD = String(payload.storeId || '');
+  if (targetStoreD) requireStoreAccess_(admin, targetStoreD);
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const ss = masterBook_();
+    const ss = targetStoreD ? storeBook_(targetStoreD) : masterBook_();
     const sheet = ss.getSheetByName(SHEET_PERIOD);
     const values = sheet.getRange(row, 1, 1, 11).getValues()[0];
     const p = periodOf_(values, row);
@@ -585,18 +613,25 @@ function dateKey_(v) {
 }
 function getTimecard(idToken, displayName, payload) {
   const user = verifyIdToken(idToken);
-  requireAdmin_(user.userId);
+  const admin = requireAdmin_(user.userId);
   const month = /^\d{4}-\d{2}$/.test(String(payload.month || '')) ? String(payload.month)
     : Utilities.formatDate(new Date(), TZ, 'yyyy-MM');
-  const ss = masterBook_();
+  const wantStore = String(payload.storeId || '');
+  if (wantStore) requireStoreAccess_(admin, wantStore);
+  const storeNameOf = {};
   const empByLine = {};
-  readEmployees_(ss).forEach(function (e) { if (e.lineId) empByLine[e.lineId] = e; });
+  readStores_(masterBook_()).forEach(function (s) {
+    storeNameOf[s.storeId] = s.name;
+    if (admin.scope === 'store' && s.storeId !== admin.storeId) return;
+    readEmployees_(storeBook_(s.storeId)).forEach(function (e) { if (e.lineId && !empByLine[e.lineId]) empByLine[e.lineId] = e; });
+  });
   const rows = SpreadsheetApp.openById(CONFIG.TIMECARD_SPREADSHEET_ID).getSheetByName('打刻記録').getDataRange().getValues();
   const byPerson = {};
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     const date = dateKey_(r[2]);
     if (date.slice(0, 7) !== month) continue;
+    if (wantStore && String(r[13] || '') !== wantStore) continue;
     const lineId = String(r[0] || '');
     const emp = empByLine[lineId];
     const name = emp ? (emp.familyJ + ' ' + emp.firstJ).trim() : String(r[1] || '');
@@ -616,6 +651,7 @@ function getTimecard(idToken, displayName, payload) {
     byPerson[key].records.push({
       date: date, inTime: inTime, outTime: outTime, breakMin: breakMin, leave: leave,
       rawIn: String(r[10] || ''), rawOut: String(r[11] || ''), workMin: workMin,
+      storeId: String(r[13] || ''), storeName: storeNameOf[String(r[13] || '')] || '',
       open: !!inTime && !outTime && !leave
     });
   }

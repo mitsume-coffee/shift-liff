@@ -31,25 +31,83 @@ const CONFIG = {
 const TZ = 'Asia/Tokyo';
 const SHEET_LOG = '打刻記録'; // 1人×1日 = 1行
 
-/***** アクセス権（共通マスターの従業員マスターに Line_ID 登録がある人だけ使える） *****/
+/***** 店舗マスター・アクセス権（複数店舗対応） *****/
+// 店舗一覧はホーム店舗の共通マスター「店舗マスター」から読む。各店の正は各店の共通マスター。
 function masterBook_() { return SpreadsheetApp.openById(CONFIG.MASTER_SPREADSHEET_ID); }
-function isRegisteredStaff_(userId) {
-  const msh = masterBook_().getSheetByName('従業員マスター');
-  if (!msh) return false;
+function readStores_() {
+  const sh = masterBook_().getSheetByName('店舗マスター');
+  const out = [];
+  if (sh) {
+    const rows = sh.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (!rows[i][0]) continue;
+      out.push({ storeId: String(rows[i][0]), name: String(rows[i][1] || ''), masterId: String(rows[i][2] || '') });
+    }
+  }
+  if (!out.length) out.push({ storeId: CONFIG.STORE_ID, name: '', masterId: CONFIG.MASTER_SPREADSHEET_ID });
+  return out;
+}
+function storeBookOf_(storeId) {
+  const stores = readStores_();
+  for (let i = 0; i < stores.length; i++) {
+    if (stores[i].storeId === storeId && stores[i].masterId) return SpreadsheetApp.openById(stores[i].masterId);
+  }
+  return masterBook_();
+}
+function employeeRowIn_(book, userId) {
+  const msh = book.getSheetByName('従業員マスター');
+  if (!msh) return null;
   const rows = msh.getDataRange().getValues();
   const today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][10]) === String(userId)) {
       const t = rows[i][8]; // Termination_Date
       const term = t instanceof Date ? Utilities.formatDate(t, TZ, 'yyyy-MM-dd') : String(t || '').slice(0, 10);
-      if (term && term < today) return false; // 退職日を過ぎたらアクセス不可
-      return true;
+      if (term && term < today) return null;
+      return rows[i];
     }
   }
-  return false;
+  return null;
 }
+function myStores_(userId) {
+  const mine = [];
+  readStores_().forEach(function (s) {
+    const row = employeeRowIn_(storeBookOf_(s.storeId), userId);
+    if (!row) return;
+    let home;
+    if (String(row[14] || '')) home = String(row[14]) === s.storeId;
+    else home = String(row[12] || '') === s.storeId;
+    mine.push({ storeId: s.storeId, name: s.name, home: home });
+  });
+  if (mine.length && !mine.some(function (m) { return m.home; })) mine[0].home = true;
+  return mine;
+}
+function isRegisteredStaff_(userId) { return myStores_(userId).length > 0; }
 function requireAccess_(user) {
   if (!isRegisteredStaff_(user.userId)) throw new Error('NO_ACCESS');
+}
+function resolveStore_(userId, storeId) {
+  const mine = myStores_(userId);
+  if (!mine.length) throw new Error('NO_ACCESS');
+  if (storeId) {
+    const hit = mine.filter(function (m) { return m.storeId === storeId; })[0];
+    if (hit) return hit;
+  }
+  return mine.filter(function (m) { return m.home; })[0] || mine[0];
+}
+// その店のGPS判定用の設定（共通マスター「設定」から。読めなければ CONFIG）
+function storeGpsOf_(storeId) {
+  const sh = storeBookOf_(storeId).getSheetByName('設定');
+  const map = {};
+  if (sh) {
+    const rows = sh.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) if (rows[i][0]) map[String(rows[i][0])] = String(rows[i][1] || '');
+  }
+  return {
+    lat: Number(map['店舗緯度']) || CONFIG.SHOP_LAT,
+    lng: Number(map['店舗経度']) || CONFIG.SHOP_LNG,
+    radius: Number(map['GPS判定半径m']) || CONFIG.RADIUS_M
+  };
 }
 // 動作確認用（エディタから実行）: owner=true / 未登録=false のはず
 function checkAccessGate() {
@@ -90,15 +148,15 @@ function handleApi_(p) {
   let out;
   try {
     if (p.action === 'getStatus') {
-      out = { ok: true, data: getStatus(p.idToken || '', p.name || '') };
+      out = { ok: true, data: getStatus(p.idToken || '', p.name || '', p.store || '') };
     } else if (p.action === 'punch') {
       out = { ok: true, data: punch(p.idToken || '', p.name || '', JSON.parse(p.payload || '{}')) };
     } else if (p.action === 'getMonth') {
-      out = { ok: true, data: getMonth(p.idToken || '', p.name || '', p.month || '') };
+      out = { ok: true, data: getMonth(p.idToken || '', p.name || '', p.month || '', p.store || '') };
     } else if (p.action === 'saveEdit') {
       out = { ok: true, data: saveEdit(p.idToken || '', p.name || '', JSON.parse(p.payload || '{}')) };
     } else if (p.action === 'deleteRecord') {
-      out = { ok: true, data: deleteRecord(p.idToken || '', p.name || '', p.date || '') };
+      out = { ok: true, data: deleteRecord(p.idToken || '', p.name || '', p.date || '', p.store || '') };
     } else {
       out = { ok: false, error: 'unknown action' };
     }
@@ -178,10 +236,10 @@ function distanceM_(lat1, lng1, lat2, lng2) {
 }
 
 /***** 本人のその日の行を探す（無ければ null、行番号は1始まり） *****/
-function findRow_(sheet, userId, dateKey) {
+function findRow_(sheet, userId, dateKey, storeId) {
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === userId && String(rows[i][2]) === dateKey) {
+    if (rows[i][0] === userId && String(rows[i][2]) === dateKey && (!storeId || String(rows[i][13] || '') === storeId)) {
       return { row: i + 1, values: rows[i] };
     }
   }
@@ -189,7 +247,7 @@ function findRow_(sheet, userId, dateKey) {
 }
 
 function recordOf_(values) {
-  if (!values) return { inTime: '', outTime: '', breakMin: 0, leave: '', rawIn: '', rawOut: '' };
+  if (!values) return { inTime: '', outTime: '', breakMin: 0, leave: '', rawIn: '', rawOut: '', storeId: '' };
   return {
     inTime: values[3] ? String(values[3]) : '',
     outTime: values[4] ? String(values[4]) : '',
@@ -197,7 +255,8 @@ function recordOf_(values) {
     leave: values[6] ? String(values[6]) : '',
     // 打刻出社・打刻退社 = ボタンを押した時の元の時刻（編集しても変わらない）
     rawIn: values[10] ? String(values[10]) : '',
-    rawOut: values[11] ? String(values[11]) : ''
+    rawOut: values[11] ? String(values[11]) : '',
+    storeId: values[13] ? String(values[13]) : ''
   };
 }
 
@@ -209,15 +268,15 @@ function workMin_(rec) {
 }
 
 /***** 状態取得（画面の初期表示） *****/
-function getStatus(idToken, displayName) {
+function getStatus(idToken, displayName, storeId) {
   const user = verifyIdToken(idToken);
   logAccess_(user, displayName);
-  requireAccess_(user);
+  const store = resolveStore_(user.userId, storeId);
   ensureSheets();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_LOG);
   const today = todayKey_();
-  const found = findRow_(sheet, user.userId, today);
+  const found = findRow_(sheet, user.userId, today, store.storeId);
   const rec = recordOf_(found ? found.values : null);
   return {
     name: displayName || user.name || '',
@@ -226,16 +285,20 @@ function getStatus(idToken, displayName) {
     record: rec,
     canIn: !rec.inTime && !isFullLeave_(rec.leave),
     canOut: !!rec.inTime && !rec.outTime,
-    openDays: openDays_(sheet, user.userId, today)
+    openDays: openDays_(sheet, user.userId, today, store.storeId),
+    stores: myStores_(user.userId),
+    storeId: store.storeId,
+    storeName: store.name
   };
 }
 
 /***** 未退社のまま残っている過去日（出社だけあって退社が無い日） *****/
-function openDays_(sheet, userId, today) {
+function openDays_(sheet, userId, today, storeId) {
   const rows = sheet.getDataRange().getValues();
   const out = [];
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] !== userId) continue;
+    if (storeId && String(rows[i][13] || '') !== storeId) continue;
     const key = String(rows[i][2]);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || key >= today) continue;
     const rec = recordOf_(rows[i]);
@@ -254,18 +317,19 @@ function openDays_(sheet, userId, today) {
 /***** 打刻（出社・退社） *****/
 function punch(idToken, displayName, payload) {
   const user = verifyIdToken(idToken);
-  requireAccess_(user);
+  const store = resolveStore_(user.userId, payload.storeId);
   const kind = payload.kind; // 'in' | 'out'
   if (kind !== 'in' && kind !== 'out') throw new Error('打刻の種別が不正です。');
 
-  // GPS チェック（店から RADIUS_M 以内だけ打刻できる）
+  // GPS チェック（選んだ店から RADIUS_M 以内だけ打刻できる。座標はその店の共通マスター「設定」）
+  const gps = storeGpsOf_(store.storeId);
   const lat = Number(payload.lat), lng = Number(payload.lng);
   if (!isFinite(lat) || !isFinite(lng)) {
     throw new Error('位置情報が取れませんでした。位置情報を許可して、もう一度お試しください。');
   }
-  const dist = Math.round(distanceM_(CONFIG.SHOP_LAT, CONFIG.SHOP_LNG, lat, lng));
-  if (dist > CONFIG.RADIUS_M) {
-    throw new Error('店から ' + dist + 'm 離れています。打刻は店の近く（' + CONFIG.RADIUS_M + 'm以内）でのみできます。');
+  const dist = Math.round(distanceM_(gps.lat, gps.lng, lat, lng));
+  if (dist > gps.radius) {
+    throw new Error('店から ' + dist + 'm 離れています。打刻は店の近く（' + gps.radius + 'm以内）でのみできます。');
   }
 
   const lock = LockService.getScriptLock();
@@ -275,7 +339,7 @@ function punch(idToken, displayName, payload) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_LOG);
     const today = todayKey_();
-    const found = findRow_(sheet, user.userId, today);
+    const found = findRow_(sheet, user.userId, today, store.storeId);
     const rec = recordOf_(found ? found.values : null);
     const time = nowTime_();
     const name = displayName || user.name || '';
@@ -290,11 +354,11 @@ function punch(idToken, displayName, payload) {
         sheet.getRange(found.row, 2).setValue(name);
         sheet.getRange(found.row, 10).setValue(nowText_());
         sheet.getRange(found.row, 13).setValue(CONFIG.CUSTOMER_ID);
-        sheet.getRange(found.row, 14).setValue(CONFIG.STORE_ID);
+        sheet.getRange(found.row, 14).setValue(store.storeId);
       } else {
         const range = sheet.getRange(sheet.getLastRow() + 1, 1, 1, 14);
         range.setNumberFormat('@');
-        range.setValues([[user.userId, name, today, time, '', 0, '', dist, '', nowText_(), time, '', CONFIG.CUSTOMER_ID, CONFIG.STORE_ID]]);
+        range.setValues([[user.userId, name, today, time, '', 0, '', dist, '', nowText_(), time, '', CONFIG.CUSTOMER_ID, store.storeId]]);
       }
     } else { // out
       if (!rec.inTime) throw new Error('出社が記録されていません。');
@@ -303,7 +367,7 @@ function punch(idToken, displayName, payload) {
       sheet.getRange(found.row, 5).setValue(time);
       sheet.getRange(found.row, 12).setValue(time); // 打刻退社（元の時刻）
       sheet.getRange(found.row, 13).setValue(CONFIG.CUSTOMER_ID);
-      sheet.getRange(found.row, 14).setValue(CONFIG.STORE_ID);
+      sheet.getRange(found.row, 14).setValue(store.storeId);
       sheet.getRange(found.row, 6).setValue(breakMin);
       sheet.getRange(found.row, 9).setValue(dist);
       sheet.getRange(found.row, 2).setValue(name);
@@ -317,9 +381,9 @@ function punch(idToken, displayName, payload) {
 }
 
 /***** 月の一覧（本人の分だけ） *****/
-function getMonth(idToken, displayName, month) {
+function getMonth(idToken, displayName, month, storeId) {
   const user = verifyIdToken(idToken);
-  requireAccess_(user);
+  const store = resolveStore_(user.userId, storeId);
   ensureSheets();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_LOG);
@@ -327,7 +391,7 @@ function getMonth(idToken, displayName, month) {
   const rows = sheet.getDataRange().getValues();
   const byDate = {};
   for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === user.userId && String(rows[i][2]).slice(0, 7) === ym) {
+    if (rows[i][0] === user.userId && String(rows[i][2]).slice(0, 7) === ym && String(rows[i][13] || '') === store.storeId) {
       byDate[String(rows[i][2])] = recordOf_(rows[i]);
     }
   }
@@ -348,7 +412,7 @@ function getMonth(idToken, displayName, month) {
       rawIn: rec.rawIn, rawOut: rec.rawOut
     });
   }
-  return { month: ym, days: days, totalWorkMin: totalWorkMin };
+  return { month: ym, days: days, totalWorkMin: totalWorkMin, storeId: store.storeId };
 }
 
 /***** 編集（鉛筆ボタン：自分の記録を直す） *****/
@@ -356,6 +420,7 @@ function saveEdit(idToken, displayName, payload) {
   const user = verifyIdToken(idToken);
   requireAccess_(user);
   const date = String(payload.date || '');
+  const editStoreId = String(payload.storeId || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('日付が不正です。');
   const inTime = String(payload.inTime || '');
   const outTime = String(payload.outTime || '');
@@ -373,9 +438,9 @@ function saveEdit(idToken, displayName, payload) {
     ensureSheets();
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_LOG);
-    const found = findRow_(sheet, user.userId, date);
+    const found = findRow_(sheet, user.userId, date, editStoreId || null);
     const name = displayName || user.name || '';
-    const values = [user.userId, name, date, fullLeave ? '' : inTime, fullLeave ? '' : outTime, fullLeave ? 0 : breakMin, leave, '', '', nowText_(), '', '', CONFIG.CUSTOMER_ID, CONFIG.STORE_ID];
+    const values = [user.userId, name, date, fullLeave ? '' : inTime, fullLeave ? '' : outTime, fullLeave ? 0 : breakMin, leave, '', '', nowText_(), '', '', CONFIG.CUSTOMER_ID, editStoreId || (found ? String(found.values[13] || '') : CONFIG.STORE_ID)];
     if (found) {
       // 距離と元の打刻時刻は、元の打刻のものを残す（編集で消さない）
       const old = found.values;
@@ -396,14 +461,14 @@ function saveEdit(idToken, displayName, payload) {
 }
 
 /***** 記録の削除（編集画面から） *****/
-function deleteRecord(idToken, displayName, date) {
+function deleteRecord(idToken, displayName, date, storeId) {
   const user = verifyIdToken(idToken);
   requireAccess_(user);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) throw new Error('日付が不正です。');
   ensureSheets();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_LOG);
-  const found = findRow_(sheet, user.userId, date);
+  const found = findRow_(sheet, user.userId, date, storeId || null);
   if (found) sheet.deleteRow(found.row);
   return { ok: true };
 }

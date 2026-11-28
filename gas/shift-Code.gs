@@ -65,13 +65,15 @@ function handleApi_(p) {
   let out;
   try {
     if (p.action === 'getInitialData') {
-      out = { ok: true, data: getInitialData(p.idToken || '', p.name || '') };
+      out = { ok: true, data: getInitialData(p.idToken || '', p.name || '', JSON.parse(p.payload || '{}')) };
     } else if (p.action === 'saveSubmission') {
       out = { ok: true, data: saveSubmission(p.idToken || '', p.name || '', JSON.parse(p.payload || '{}')) };
     } else if (p.action === 'getRoster') {
-      out = { ok: true, data: getRoster2(p.idToken || '', p.name || '', p.period || '') };
+      out = { ok: true, data: getRoster2(p.idToken || '', p.name || '', p.period || '', p.store || '') };
+    } else if (p.action === 'getRosterMine') {
+      out = { ok: true, data: getRosterMine(p.idToken || '', p.name || '', p.period || '', p.store || '') };
     } else if (p.action === 'getIcs') {
-      out = { ok: true, data: getIcs2(p.idToken || '', p.period || '') };
+      out = { ok: true, data: getIcs2(p.idToken || '', p.period || '', p.store || '') };
     } else {
       out = { ok: false, error: 'unknown action' };
     }
@@ -211,11 +213,12 @@ function typeLabel(type, start, end) {
 }
 
 /***** 画面の初期データ（本人の分だけ返す） *****/
-function getInitialData(idToken, displayName) {
+function getInitialData(idToken, displayName, payload) {
   const user = verifyIdToken(idToken);
   const info = targetMonthInfo();
   logAccess_(user, displayName, '表示');
-  requireAccess_(user);
+  const store = resolveStore_(user.userId, payload && payload.storeId);
+  const storeSettings = storeSettingsMap_(storeBookOf_(store.storeId));
   const myDeadline = effectiveDeadline_(info, user.userId);
   const myLocked = new Date().getTime() > myDeadline.getTime();
   ensureSheets();
@@ -225,7 +228,7 @@ function getInitialData(idToken, displayName) {
   const saved = {};
   const rows = ss.getSheetByName(SHEET_DATA).getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === user.userId && monthKey_(rows[i][2]) === info.month) {
+    if (rows[i][0] === user.userId && monthKey_(rows[i][2]) === info.month && String(rows[i][10] || '') === store.storeId) {
       saved[rows[i][3]] = { type: rows[i][5], start: rows[i][6], end: rows[i][7] };
     }
   }
@@ -233,9 +236,34 @@ function getInitialData(idToken, displayName) {
   let memo = '', updatedAt = '';
   const srows = ss.getSheetByName(SHEET_STATUS).getDataRange().getValues();
   for (let i = 1; i < srows.length; i++) {
-    if (srows[i][0] === user.userId && monthKey_(srows[i][2]) === info.month) {
+    if (srows[i][0] === user.userId && monthKey_(srows[i][2]) === info.month && String(srows[i][6] || '') === store.storeId) {
       memo = srows[i][3] || '';
       updatedAt = srows[i][4] ? Utilities.formatDate(new Date(srows[i][4]), TZ, 'M/d HH:mm') : '';
+    }
+  }
+
+  // 休業日はその店の共通マスター「設定」から（定休日（曜日）・特別休日）。読めなければ CONFIG にフォールバック
+  const dowChars = '日月火水木金土';
+  let closedWeekdays = CONFIG.CLOSED_WEEKDAYS;
+  const cdText = String(storeSettings['定休日（曜日）'] || '');
+  if (cdText) {
+    closedWeekdays = [];
+    for (let ci = 0; ci < cdText.length; ci++) {
+      const idx = dowChars.indexOf(cdText[ci]);
+      if (idx >= 0) closedWeekdays.push(idx);
+    }
+  }
+  const specialHolidays = {};
+  String(storeSettings['特別休日'] || '').split(',').forEach(function (s) {
+    const t = s.trim();
+    if (t) specialHolidays[t] = true;
+  });
+  if (!cdText && !storeSettings['特別休日']) {
+    const ye = CONFIG.YEAR_END_CLOSED;
+    if (ye) {
+      for (let dd = ye.fromDay; dd <= 31; dd++) {
+        specialHolidays[info.month.slice(0, 4) + '-' + ('0' + ye.month).slice(-2) + '-' + ('0' + dd).slice(-2)] = true;
+      }
     }
   }
 
@@ -262,11 +290,10 @@ function getInitialData(idToken, displayName) {
       }
       savedDay = { type: t, start: s.start, end: s.end };
     }
-    // 休業日（定休日・年末休み）は入力できないよう closed を付ける
+    // 休業日（定休日・特別休日）は入力できないよう closed を付ける
     let closed = null;
-    const ye = CONFIG.YEAR_END_CLOSED;
-    if (ye && m === ye.month && d >= ye.fromDay) closed = '年末休み';
-    else if (CONFIG.CLOSED_WEEKDAYS.indexOf(dow) >= 0) closed = '定休日';
+    if (specialHolidays[key]) closed = '特別休日';
+    else if (closedWeekdays.indexOf(dow) >= 0) closed = '定休日';
     days.push({
       date: key, day: d, dow: dowNames[dow],
       isSun: dow === 0, isSat: dow === 6,
@@ -277,6 +304,9 @@ function getInitialData(idToken, displayName) {
   return {
     ok: true,
     name: displayName || user.name || '',
+    stores: myStores_(user.userId),
+    storeId: store.storeId,
+    storeName: store.name,
     month: info.month,
     monthLabel: info.monthLabel,
     deadlineText: Utilities.formatDate(myDeadline, TZ, 'M月d日(E) HH:mm'),
@@ -290,7 +320,7 @@ function getInitialData(idToken, displayName) {
 /***** 提出の保存（締切までは上書き更新） *****/
 function saveSubmission(idToken, displayName, payload) {
   const user = verifyIdToken(idToken);
-  requireAccess_(user);
+  const store = resolveStore_(user.userId, payload.storeId);
   const info = targetMonthInfo();
   if (payload.month !== info.month) throw new Error('対象月が変わっています。開き直してください。');
   const myDeadline = effectiveDeadline_(info, user.userId);
@@ -310,7 +340,7 @@ function saveSubmission(idToken, displayName, payload) {
     const rows = dataSheet.getDataRange().getValues();
     const keep = [rows[0]];
     for (let i = 1; i < rows.length; i++) {
-      if (!(rows[i][0] === user.userId && monthKey_(rows[i][2]) === info.month)) keep.push(rows[i]);
+      if (!(rows[i][0] === user.userId && monthKey_(rows[i][2]) === info.month && String(rows[i][10] || '') === store.storeId)) keep.push(rows[i]);
     }
     dataSheet.clearContents();
     dataSheet.getRange(1, 1, keep.length, keep[0].length).setValues(keep);
@@ -328,7 +358,7 @@ function saveSubmission(idToken, displayName, payload) {
         user.userId, displayName || user.name || '', info.month, key,
         dowNames[dt.getDay()], label,
         d.type === 'off' ? '' : d.start, d.type === 'off' ? '' : d.end,
-        nowText, CONFIG.CUSTOMER_ID, CONFIG.STORE_ID
+        nowText, CONFIG.CUSTOMER_ID, store.storeId
       ]);
     });
     if (newRows.length > 0) {
@@ -343,9 +373,9 @@ function saveSubmission(idToken, displayName, payload) {
     const srows = statusSheet.getDataRange().getValues();
     let found = -1;
     for (let i = 1; i < srows.length; i++) {
-      if (srows[i][0] === user.userId && monthKey_(srows[i][2]) === info.month) { found = i + 1; break; }
+      if (srows[i][0] === user.userId && monthKey_(srows[i][2]) === info.month && String(srows[i][6] || '') === store.storeId) { found = i + 1; break; }
     }
-    const sRow = [user.userId, displayName || user.name || '', info.month, payload.memo || '', nowText, CONFIG.CUSTOMER_ID, CONFIG.STORE_ID];
+    const sRow = [user.userId, displayName || user.name || '', info.month, payload.memo || '', nowText, CONFIG.CUSTOMER_ID, store.storeId];
     const targetRow = found > 0 ? found : statusSheet.getLastRow() + 1;
     const sRange = statusSheet.getRange(targetRow, 1, 1, sRow.length);
     sRange.setNumberFormat('@'); // 「2026-12」が日付に自動変換されるのを防ぐ
@@ -566,24 +596,81 @@ function rosterBook_() { return SpreadsheetApp.openById(ROSTER_SPREADSHEET_ID); 
 const MASTER_SPREADSHEET_ID = '1UowDnTtWjvcWEy0VBDpEQUMeP0SyZ5yDekpztmyWjZQ';
 function masterBook_() { return SpreadsheetApp.openById(MASTER_SPREADSHEET_ID); }
 
-/***** アクセス権（共通マスターの従業員マスターに Line_ID 登録がある人だけ使える） *****/
-function isRegisteredStaff_(userId) {
-  const msh = masterBook_().getSheetByName('従業員マスター');
-  if (!msh) return false;
+/***** 店舗マスター・アクセス権（複数店舗対応） *****/
+// 店舗一覧はホーム店舗の共通マスター「店舗マスター」から読む。各店の正は各店の共通マスター。
+function readStores_() {
+  const sh = masterBook_().getSheetByName('店舗マスター');
+  const out = [];
+  if (sh) {
+    const rows = sh.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (!rows[i][0]) continue;
+      out.push({ storeId: String(rows[i][0]), name: String(rows[i][1] || ''), masterId: String(rows[i][2] || '') });
+    }
+  }
+  if (!out.length) out.push({ storeId: CONFIG.STORE_ID, name: '', masterId: MASTER_SPREADSHEET_ID });
+  return out;
+}
+function storeBookOf_(storeId) {
+  const stores = readStores_();
+  for (let i = 0; i < stores.length; i++) {
+    if (stores[i].storeId === storeId && stores[i].masterId) return SpreadsheetApp.openById(stores[i].masterId);
+  }
+  return masterBook_();
+}
+// その店の従業員マスターで userId の行（在籍中のみ）を返す。なければ null
+function employeeRowIn_(book, userId) {
+  const msh = book.getSheetByName('従業員マスター');
+  if (!msh) return null;
   const rows = msh.getDataRange().getValues();
   const today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][10]) === String(userId)) {
       const t = rows[i][8]; // Termination_Date
       const term = t instanceof Date ? Utilities.formatDate(t, TZ, 'yyyy-MM-dd') : String(t || '').slice(0, 10);
-      if (term && term < today) return false; // 退職日を過ぎたらアクセス不可
-      return true;
+      if (term && term < today) return null; // 退職日を過ぎたら対象外
+      return rows[i];
     }
   }
-  return false;
+  return null;
 }
+// 本人がスタッフ登録されている店舗の一覧（home=所属店舗）
+function myStores_(userId) {
+  const mine = [];
+  readStores_().forEach(function (s) {
+    const row = employeeRowIn_(storeBookOf_(s.storeId), userId);
+    if (!row) return;
+    let home;
+    if (String(row[14] || '')) home = String(row[14]) === s.storeId; // 所属店舗が入っていればそれが正
+    else home = String(row[12] || '') === s.storeId;
+    mine.push({ storeId: s.storeId, name: s.name, home: home });
+  });
+  if (mine.length && !mine.some(function (m) { return m.home; })) mine[0].home = true;
+  return mine;
+}
+function isRegisteredStaff_(userId) { return myStores_(userId).length > 0; }
 function requireAccess_(user) {
   if (!isRegisteredStaff_(user.userId)) throw new Error('NO_ACCESS');
+}
+// 対象店舗の決定：指定が本人の店舗ならそれ、なければ所属店舗
+function resolveStore_(userId, storeId) {
+  const mine = myStores_(userId);
+  if (!mine.length) throw new Error('NO_ACCESS');
+  if (storeId) {
+    const hit = mine.filter(function (m) { return m.storeId === storeId; })[0];
+    if (hit) return hit;
+  }
+  return mine.filter(function (m) { return m.home; })[0] || mine[0];
+}
+// 店舗の「設定」シートを {項目: 値} で読む
+function storeSettingsMap_(book) {
+  const sh = book.getSheetByName('設定');
+  const map = {};
+  if (sh) {
+    const rows = sh.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) if (rows[i][0]) map[String(rows[i][0])] = String(rows[i][1] || '');
+  }
+  return map;
 }
 // 動作確認用（エディタから実行）: owner=true / 未登録=false のはず
 function checkAccessGate() {
@@ -607,9 +694,9 @@ function dateStr_(v) {
   if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM-dd');
   return String(v || '').slice(0, 10);
 }
-function listPeriods_() {
-  // v14: 期間の正は共通マスターの「期間マスター」。確定シフトの実データは割当案ブック側のシートを読む
-  const sh = masterBook_().getSheetByName('期間マスター');
+function listPeriods_(book) {
+  // 期間の正は共通マスターの「期間マスター」。確定シフトの実データは割当案ブック側のシートを読む
+  const sh = (book || masterBook_()).getSheetByName('期間マスター');
   const out = [];
   if (sh) {
     const rows = sh.getDataRange().getValues();
@@ -632,9 +719,9 @@ function pickPeriod_(periods, key) {
   for (let i = 0; i < periods.length; i++) if (periods[i].start > today) return periods[i];
   return periods[periods.length - 1];
 }
-function mySurname_(ss, userId) {
-  // v14: 人の正は共通マスターの「従業員マスター」（Line_ID列→Family_J列）
-  const msh = masterBook_().getSheetByName('従業員マスター');
+function mySurname_(ss, userId, book) {
+  // 人の正は共通マスターの「従業員マスター」（Line_ID列→Family_J列）
+  const msh = (book || masterBook_()).getSheetByName('従業員マスター');
   if (msh) {
     const mrows = msh.getDataRange().getValues();
     for (let i = 1; i < mrows.length; i++) {
@@ -669,12 +756,13 @@ function readPeriodRows_(sheet) {
   }
   return { columns: columns, rows: rows };
 }
-function getRoster2(idToken, displayName, periodKey) {
+function getRoster2(idToken, displayName, periodKey, storeId) {
   const user = verifyIdToken(idToken);
   logAccess_(user, displayName, '照会');
-  requireAccess_(user);
+  const store = resolveStore_(user.userId, storeId);
+  const book = storeBookOf_(store.storeId);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const periods = listPeriods_();
+  const periods = listPeriods_(book);
   const period = pickPeriod_(periods, periodKey || '');
   if (!period) throw new Error('確定シフトがまだ登録されていません。');
   const data = readPeriodRows_(rosterBook_().getSheetByName(period.sheetName));
@@ -682,16 +770,48 @@ function getRoster2(idToken, displayName, periodKey) {
     month: period.start.slice(0, 7), monthLabel: period.label, label: period.label,
     periodKey: period.key,
     periods: periods.map(function (p) { return { key: p.key, label: p.label }; }),
-    columns: data.columns, rows: data.rows, me: mySurname_(ss, user.userId)
+    columns: data.columns, rows: data.rows, me: mySurname_(ss, user.userId, book),
+    stores: myStores_(user.userId), storeId: store.storeId, storeName: store.name
   };
 }
-function getIcs2(idToken, periodKey) {
+
+// 自分だけ表示（店舗を跨いで自分のシフトをまとめて返す）
+function getRosterMine(idToken, displayName, periodKey, storeId) {
   const user = verifyIdToken(idToken);
-  requireAccess_(user);
+  logAccess_(user, displayName, '照会');
+  const store = resolveStore_(user.userId, storeId);
+  const ref = pickPeriod_(listPeriods_(storeBookOf_(store.storeId)), periodKey || '');
+  if (!ref) throw new Error('確定シフトがまだ登録されていません。');
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const me = mySurname_(ss, user.userId);
+  const entries = [];
+  myStores_(user.userId).forEach(function (m) {
+    const b = storeBookOf_(m.storeId);
+    const p = listPeriods_(b).filter(function (x) { return x.start === ref.start && x.end === ref.end; })[0];
+    if (!p) return;
+    const sheet = rosterBook_().getSheetByName(p.sheetName);
+    if (!sheet) return;
+    const data = readPeriodRows_(sheet);
+    const me = mySurname_(ss, user.userId, b);
+    if (!me || data.columns.indexOf(me) < 0) return;
+    data.rows.forEach(function (r) {
+      const v = r.cells[me];
+      if (v) entries.push({ date: r.date, dayLabel: r.dayLabel, wd: r.wd, storeId: m.storeId, storeName: m.name, text: v });
+    });
+  });
+  entries.sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+  return {
+    label: ref.label, periodKey: ref.key, entries: entries,
+    stores: myStores_(user.userId), storeId: store.storeId, storeName: store.name
+  };
+}
+function getIcs2(idToken, periodKey, storeId) {
+  const user = verifyIdToken(idToken);
+  const store = resolveStore_(user.userId, storeId);
+  const book = storeBookOf_(store.storeId);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const me = mySurname_(ss, user.userId, book);
   if (!me) throw new Error('スタッフ登録が見つかりませんでした。');
-  const periods = listPeriods_();
+  const periods = listPeriods_(book);
   const period = pickPeriod_(periods, periodKey || '');
   if (!period) throw new Error('確定シフトがまだ登録されていません。');
   const data = readPeriodRows_(rosterBook_().getSheetByName(period.sheetName));

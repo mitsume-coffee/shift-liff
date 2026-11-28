@@ -48,7 +48,9 @@ let body;
 try {
 const user = verifyIdToken(p.idToken || '');
 logAccess_(user, p.name || '');
-body = JSON.stringify({ ok: true, data: { allowed: isRegisteredStaff_(user.userId) } });
+const mine = myStores_(user.userId);
+const def = mine.filter(function (m) { return m.home; })[0] || mine[0];
+body = JSON.stringify({ ok: true, data: { allowed: mine.length > 0, stores: mine, storeId: def ? def.storeId : '' } });
 } catch (err) {
 body = JSON.stringify({ ok: false, error: String(err && err.message ? err.message : err) });
 }
@@ -86,26 +88,69 @@ const j = JSON.parse(res.getContentText());
 return { userId: j.sub, name: j.name || ''};
 }
 
-/* ---------- アクセス権（共通マスターの従業員マスターに Line_ID 登録がある人だけ） ---------- */
+/* ---------- 店舗マスター・アクセス権（複数店舗対応） ---------- */
 
 function masterBook_() { return SpreadsheetApp.openById(CONFIG.MASTER_SPREADSHEET_ID); }
-function isRegisteredStaff_(userId) {
-const msh = masterBook_().getSheetByName('従業員マスター');
-if (!msh) return false;
+function readStores_() {
+const sh = masterBook_().getSheetByName('店舗マスター');
+const out = [];
+if (sh) {
+const rows = sh.getDataRange().getValues();
+for (let i = 1; i < rows.length; i++) {
+if (!rows[i][0]) continue;
+out.push({ storeId: String(rows[i][0]), name: String(rows[i][1] || ''), masterId: String(rows[i][2] || '') });
+}
+}
+if (!out.length) out.push({ storeId: CONFIG.STORE_ID, name: '', masterId: CONFIG.MASTER_SPREADSHEET_ID });
+return out;
+}
+function storeBookOf_(storeId) {
+const stores = readStores_();
+for (let i = 0; i < stores.length; i++) {
+if (stores[i].storeId === storeId && stores[i].masterId) return SpreadsheetApp.openById(stores[i].masterId);
+}
+return masterBook_();
+}
+function employeeRowIn_(book, userId) {
+const msh = book.getSheetByName('従業員マスター');
+if (!msh) return null;
 const rows = msh.getDataRange().getValues();
 const today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
 for (let i = 1; i < rows.length; i++) {
 if (String(rows[i][10]) === String(userId)) {
 const t = rows[i][8]; // Termination_Date
 const term = t instanceof Date ? Utilities.formatDate(t, TZ, 'yyyy-MM-dd') : String(t || '').slice(0, 10);
-if (term && term < today) return false; // 退職日を過ぎたらアクセス不可
-return true;
+if (term && term < today) return null;
+return rows[i];
 }
 }
-return false;
+return null;
 }
+function myStores_(userId) {
+const mine = [];
+readStores_().forEach(function (s) {
+const row = employeeRowIn_(storeBookOf_(s.storeId), userId);
+if (!row) return;
+let home;
+if (String(row[14] || '')) home = String(row[14]) === s.storeId;
+else home = String(row[12] || '') === s.storeId;
+mine.push({ storeId: s.storeId, name: s.name, home: home });
+});
+if (mine.length && !mine.some(function (m) { return m.home; })) mine[0].home = true;
+return mine;
+}
+function isRegisteredStaff_(userId) { return myStores_(userId).length > 0; }
 function requireAccess_(user) {
 if (!isRegisteredStaff_(user.userId)) throw new Error('NO_ACCESS');
+}
+function resolveStore_(userId, storeId) {
+const mine = myStores_(userId);
+if (!mine.length) throw new Error('NO_ACCESS');
+if (storeId) {
+const hit = mine.filter(function (m) { return m.storeId === storeId; })[0];
+if (hit) return hit;
+}
+return mine.filter(function (m) { return m.home; })[0] || mine[0];
 }
 // 動作確認用（エディタから実行）: owner=true / 未登録=false のはず
 function checkAccessGate() {
@@ -167,7 +212,7 @@ return file.getUrl();
 
 function saveReport(p) {
 const user = verifyIdToken(p.idToken || '');
-requireAccess_(user);
+const store = resolveStore_(user.userId, p.storeId);
 const category = CONFIG.CATEGORIES.indexOf(p.category) >= 0? p.category: 'その他';
 const item = String(p.item || '').trim();
 const detail = String(p.detail || '').trim();
@@ -193,7 +238,7 @@ sheet.appendRow([
 number,
 Utilities.formatDate(now, TZ, 'yyyy-MM-dd HH:mm:ss'),
 name, user.userId, category, item, detail, urgency,
-photoUrl, '未対応', CONFIG.CUSTOMER_ID, CONFIG.STORE_ID
+photoUrl, '未対応', CONFIG.CUSTOMER_ID, store.storeId
 ]);
 
 // オーナーへ通知メール
