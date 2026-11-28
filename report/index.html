@@ -23,6 +23,7 @@
   .chips button.on { background: #0A5A0B; border-color: #0A5A0B; color: #fff; font-weight: 700; }
   .chips button.on.urg-high { background: #b3261e; border-color: #b3261e; }
   input[type="text"], textarea { width: 100%; border: 1px solid #cbbfa5; border-radius: 10px; padding: 10px 12px; font-size: 16px; background: #fff; }
+  .store-sel { width: 100%; border: 1.5px solid #0A5A0B; border-radius: 10px; padding: 10px 12px; font-size: 16px; background: #fff; color: #0A5A0B; font-weight: 700; }
   textarea { resize: vertical; }
   input[type="file"] { font-size: 14px; }
   #photoPreview { margin-top: 8px; }
@@ -53,6 +54,11 @@
 <div id="loading">読み込み中…</div>
 
 <main id="main" class="hidden">
+  <div class="field">
+    <div class="label">店舗</div>
+    <select id="storeSel" class="store-sel"></select>
+  </div>
+
   <div class="field">
     <div class="label">カテゴリ<span class="req">必須</span></div>
     <div class="chips" id="catChips">
@@ -112,7 +118,7 @@
   var LIFF_ID = '2012734423-dIDvKWqD';
   var API_URL = 'https://script.google.com/macros/s/AKfycbwkvk8tJkn8rY4Kf6WnBUFRCkSHgE0nEOImLm3xdg1Sys-1SELJOZrwsgXfGSoaJdKlYw/exec';
 
-  var state = { category: null, urgency: 'normal', photoData: '', name: '' };
+  var state = { category: null, urgency: 'normal', photoData: '', name: '', storeId: '' };
 
   function $(id) { return document.getElementById(id); }
 
@@ -198,6 +204,16 @@
         try {
           var acc = await jsonp({ action: 'access', idToken: idToken, name: state.name });
           if (acc && acc.ok && acc.data && acc.data.allowed === false) { showNoAccess(); return; }
+          if (acc && acc.ok && acc.data) {
+            var sel = $('storeSel');
+            (acc.data.stores || []).forEach(function (s) {
+              var o = document.createElement('option');
+              o.value = s.storeId; o.textContent = s.name;
+              sel.appendChild(o);
+            });
+            if (acc.data.storeId) sel.value = acc.data.storeId;
+            state.storeId = sel.value || acc.data.storeId || '';
+          }
         } catch (e) { /* 確認できない時は表示を優先（送信時にサーバー側で最終判定） */ }
       }
       $('loading').classList.add('hidden');
@@ -207,6 +223,8 @@
       $('loading').textContent = '読み込みに失敗しました：' + (e && e.message ? e.message : e);
     }
   }
+
+  $('storeSel').addEventListener('change', function () { state.storeId = $('storeSel').value; });
 
   $('sendBtn').addEventListener('click', async function () {
     $('err').textContent = '';
@@ -227,6 +245,7 @@
         body: JSON.stringify({
           idToken: idToken,
           name: state.name,
+          storeId: state.storeId || '',
           category: state.category,
           item: item,
           detail: $('detail').value.trim(),
