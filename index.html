@@ -52,7 +52,7 @@
   #saveBtn:disabled { background: #b9b0a6; }
   #status { text-align: center; font-size: 12.5px; color: #8a7461; margin-top: 7px; min-height: 16px; }
   .notice { background: #fff3cd; border: 1px solid #e6cf8a; color: #6b5510; border-radius: 12px; padding: 12px; font-size: 14px; line-height: 1.6; margin-bottom: 12px; display: none; }
-   .guide { font-size: 12.5px; color: #6b6252; line-height: 1.7; margin: 0 2px 12px; }
+  .guide { font-size: 12.5px; color: #6b6252; line-height: 1.7; margin: 0 2px 12px; }
   #loading { text-align: center; padding: 40px 0; color: #836312; font-size: 14px; }
   .hidden { display: none !important; }
 </style>
@@ -88,7 +88,8 @@
 
     <div class="guide">何も押していない日は「未定」になります。微妙な日は、押さずに未定のままで大丈夫です。絶対に出られない日は「休み」を押してください。</div>
 
-   <div id="days"></div>
+    <div id="days"></div>
+
     <div class="memo">
       <div class="t">メモ（任意）例：テスト期間なので◯日は早めに上がりたいです、など</div>
       <textarea id="memo" placeholder="伝えたいことがあれば書いてください"></textarea>
@@ -116,7 +117,7 @@
       var script = document.createElement('script');
       var timer = setTimeout(function () { cleanup(); reject(new Error('通信がタイムアウトしました')); }, 30000);
       function cleanup() { clearTimeout(timer); try { delete window[cb]; } catch (e) { window[cb] = undefined; } if (script.parentNode) script.parentNode.removeChild(script); }
-      window[cb] = function (res) { cleanup(); if (res && res.ok) resolve(res.data); else reject(new Error((res && res.error) || 'サーバーエラー')); };
+      window[cb] = function (res) { cleanup(); if (res && res.ok) { resolve(res.data); return; } if (res && res.error === 'NO_ACCESS') { showNoAccess(); reject(new Error('NO_ACCESS')); return; } reject(new Error((res && res.error) || 'サーバーエラー')); };
       var qs = ['api=1', 'action=' + encodeURIComponent(action), 'callback=' + cb];
       Object.keys(params || {}).forEach(function (k) { qs.push(k + '=' + encodeURIComponent(params[k])); });
       script.src = API_URL + '?' + qs.join('&');
@@ -126,6 +127,14 @@
   }
   function $(id) { return document.getElementById(id); }
   function setLoading(text) { $('loading').textContent = text; }
+  function showNoAccess() {
+    document.body.innerHTML =
+      '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;background:#f7f7f2;">' +
+      '<div style="text-align:center;max-width:340px;">' +
+      '<div style="font-size:19px;font-weight:700;color:#0A5A0B;margin-bottom:14px;">アクセス権がありません</div>' +
+      '<div style="font-size:15px;line-height:1.8;color:#333;">管理者に設定をしてもらってください。</div>' +
+      '</div></div>';
+  }
 
   async function init() {
     try {
@@ -139,6 +148,7 @@
       var data = await api('getInitialData', { idToken: idToken, name: profile.displayName || '' });
       render(data);
     } catch (e) {
+      if (e && e.message === 'NO_ACCESS') return;
       setLoading('読み込みに失敗しました：' + (e && e.message ? e.message : e));
       console.error(e);
     }
@@ -280,10 +290,10 @@
       if (state.days[date]) { days[date] = state.days[date]; count++; }
     });
     if (count === 0) { $('status').textContent = '1日も入力されていません。'; return; }
-      var undecided = 0;
-       Object.keys(state.days).forEach(function (date) {
-              if (!state.closed[date] && !state.days[date]) undecided++;
-       });
+    var undecided = 0;
+    Object.keys(state.days).forEach(function (date) {
+      if (!state.closed[date] && !state.days[date]) undecided++;
+    });
     $('saveBtn').disabled = true;
     $('status').textContent = '送信中…';
     try {
@@ -293,9 +303,10 @@
       $('status').textContent = '提出しました（' + res.updatedAt + '）。締切までは変更できます。' + (undecided ? '未定の日が' + undecided + '日あります。' : '');
       $('lastSaved').textContent = '前回の提出：' + res.updatedAt;
     } catch (e) {
+      if (e && e.message === 'NO_ACCESS') return;
       $('status').textContent = '送信に失敗しました：' + (e && e.message ? e.message : e);
     } finally {
-      $('saveBtn').disabled = false;
+      var sb = $('saveBtn'); if (sb) sb.disabled = false;
     }
   });
 
