@@ -124,7 +124,7 @@
       if (inLineApp && !/[?&]retry=1/.test(location.search)) {
         document.documentElement.classList.add('splash-on');
         const shownAt = window.__splashAt || Date.now();
-        const wait = Math.max(0, 2900 - (Date.now() - shownAt));
+        const wait = Math.max(0, 4300 - (Date.now() - shownAt));
         setTimeout(function(){
           location.replace('https://liff.line.me/' + PORTAL_LIFF_ID + '?retry=1');
         }, wait);
